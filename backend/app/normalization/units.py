@@ -26,6 +26,12 @@ def normalize_value(
     if kind in {"NUMBER", "QUANTITY"}:
         if _currency_codes(text, raw_unit):
             return normalize_currency(text, raw_unit)
+        if re.search(
+            r"(?:%|\bpercent\b|\bper\s+cent\b)",
+            f"{text} {raw_unit or ''}",
+            re.IGNORECASE,
+        ):
+            return normalize_percentage(text, raw_unit)
         return normalize_numeric(text, raw_unit, quantity=kind == "QUANTITY")
     if kind == "BOOLEAN":
         lowered = text.casefold()

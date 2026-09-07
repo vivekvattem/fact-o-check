@@ -142,7 +142,7 @@ npm run build
 
 ## Current phase
 
-Phase 5 validation completed with the bounded persisted Delhivery dataset. Ingestion and extraction remain explicit operations; comparison normalizes its persisted fact pool before candidate generation so it cannot reason over stale canonical fields. Facts can be compared incrementally across documents, and the Relationships UI exposes classifications, source evidence, contextual checks, and safe reasoning metadata. Upload never triggers extraction, normalization, or comparison.
+Phase 5 validation completed with bounded persisted Delhivery and India starter evidence. Ingestion and extraction remain explicit operations; comparison normalizes its persisted fact pool before candidate generation so it cannot reason over stale canonical fields. Facts can be compared incrementally across documents, and the Relationships UI exposes classifications, source evidence, contextual checks, and safe reasoning metadata. Upload never triggers extraction, normalization, or comparison.
 
 ## Fact extraction
 
@@ -233,13 +233,13 @@ Entity canonicalization folds case, whitespace, and surrounding punctuation, rem
 
 > Deterministic checks decide clear numerical relationships; LLM reasoning is reserved for ambiguous semantic context.
 
-The comparison pipeline is staged: normalization, candidate generation, comparability checks, deterministic value/context reasoning, optional semantic fallback, and persistence. Candidate generation starts with facts from the selected document and uses compatible value types plus exact canonical subjects or conservative lexical subject matching. Lexical matching removes only safe stopwords, recognizes a small set of common revenue-reporting phrases, and requires 85% token-set similarity otherwise; its method, score, and shared tokens are persisted in safe reasoning metadata. It never compares a fact with itself, and it does not merge `EBITDA` with `Adjusted EBITDA`. Canonical pair ordering and a unique MongoDB index prevent reversed and repeated relations. Comparing a newly added document therefore extends the relation set without rebuilding old pairs.
+The comparison pipeline is staged: normalization, candidate generation, comparability checks, deterministic value/context reasoning, optional semantic fallback, and persistence. Candidate generation starts with facts from the selected document and uses compatible canonical units plus exact canonical subjects or conservative lexical subject matching. Lexical matching removes only safe stopwords, recognizes a small set of common reporting phrases, and requires 85% token-set similarity otherwise; its method, score, and shared tokens are persisted in safe reasoning metadata. Predicate normalization removes common reporting verbs and makes an expanded metric name comparable with its abbreviation without adding publisher-specific aliases. It never compares a fact with itself, and it does not merge `EBITDA` with `Adjusted EBITDA`. Canonical pair ordering and a unique MongoDB index prevent reversed and repeated relations. Comparing a newly added document therefore extends the relation set without rebuilding old pairs.
 
 Relations use `CORROBORATES`, `CONTRADICTS`, `RECONCILABLE`, `UNRELATED`, or `NEEDS_REVIEW`. Clear canonical equality corroborates. Material differences contradict only when subject, predicate, type, unit, and explicit context are comparable. Explicit period, scope, geography, or estimate/forecast/actual differences can make an apparent mismatch reconcilable. Missing normalization or one-sided context produces `NEEDS_REVIEW` rather than a forced conclusion.
 
 ### Context and tolerance policy
 
-Context comparison returns structured temporal, geography, scope, qualifier, status, difference, and missing-dimension fields. Same periods and as-of dates are distinguished from different or one-sided temporal context. Geography and scope use exact canonical text comparison. Estimate, forecast, and actual markers are read only from explicit scope or qualifiers; arbitrary qualifier differences remain ambiguous for semantic review.
+Context comparison returns structured temporal, geography, scope, qualifier, status, difference, and missing-dimension fields. Same periods and as-of dates are distinguished from different or one-sided temporal context. A matching canonical subject can supply an omitted geography, and fiscal-period-only scope text is treated as temporal context rather than a conflicting business scope. Estimate, forecast, and actual markers are read from explicit predicates, scope, or qualifiers; arbitrary qualifier differences remain ambiguous for semantic review.
 
 Tolerance is typed rather than universal:
 
@@ -261,7 +261,19 @@ Only ambiguous predicate wording, textual meaning, or qualifier context can reac
 
 ## Required Assignment Cases
 
-A bounded deterministic-only validation used the persisted Delhivery FY24 Annual Report, Q4 FY24 Earnings Presentation, and prospectus. It made no semantic-fallback calls. The final persisted set contains 28 `NEEDS_REVIEW` and 102 `UNRELATED` relations. The available facts did not prove a `CORROBORATES`, `CONTRADICTS`, or `RECONCILABLE` case after all facts were normalized, so none is claimed here.
+A bounded validation added only the relevant persisted GDP evidence from the Economic Survey 2024-25, RBI Annual Report 2024-25, and IMF 2024 India Article IV. It used one extraction window per source (three provider calls total), then normalized the facts and ran one deterministic relation pass with no semantic fallback.
+
+### Case 1 — Verified corroboration
+
+The RBI FY2024/25 real GDP growth fact (`6.5 per cent`) and IMF FY2024/25 real GDP growth fact (`6.5 percent`) normalize to the same subject, metric, fiscal period, percentage unit, and value. Their reporting-status difference is explicit, and the persisted relation is `CORROBORATES` with valid source evidence for both facts.
+
+### Case 2 — Verified reconciliation
+
+The Economic Survey first-advance-estimate fact (`6.4 per cent` for FY25) and IMF expected-growth fact (`6.5 percent` for 2024/25) normalize to the same subject, metric, fiscal period, and unit. The explicit estimate-versus-forecast context explains the small value difference, so the persisted relation is `RECONCILABLE`.
+
+### Case 3 — Contradiction not found
+
+The persisted India starter facts contain no genuine same-period, same-scope, materially conflicting value. No `CONTRADICTS` case is claimed or forced.
 
 ### Case 4 — Verified extraction/reasoning failure
 
@@ -271,10 +283,10 @@ Current mitigation is strict schema/provenance validation, layout bounding boxes
 
 ## Demo Flow
 
-1. Open **Documents**, select the persisted FY24 Annual Report, and inspect evidence on page 5.
-2. Open **Facts** and inspect the `Revenue from services` / `₹1,266Mn` fact alongside its cited evidence to demonstrate the layout-label failure.
-3. Open **Relationships**, select **Needs Review**, and open the `81,415` versus `₹8,142 Cr` revenue pair.
-4. Compare each fact's raw and normalized values, source pages, and the structured explanation showing that one-sided temporal context prevented an unsupported conclusion.
+1. Open **Relationships**, select **Corroborated**, and inspect the RBI/IMF `6.5` FY2024/25 GDP pair.
+2. Select **Reconciled** and inspect the Economic Survey `6.4` first advance estimate against the IMF `6.5` expectation.
+3. Open **Documents**, select the persisted Delhivery FY24 Annual Report, and inspect evidence on page 5.
+4. Open **Facts** and inspect the `Revenue from services` / `₹1,266Mn` fact alongside its cited evidence to demonstrate the retained layout-label failure.
 
 ### Current limitations
 

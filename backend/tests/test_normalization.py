@@ -56,6 +56,13 @@ def test_number_with_currency_unit_is_normalized_as_currency():
     assert "currency_to_base_unit" in result.rules
 
 
+def test_number_with_percentage_unit_is_normalized_as_percentage():
+    result = normalize_value("6.5", "NUMBER", "percent")
+
+    assert result.value == 6.5
+    assert result.unit == "PERCENT"
+
+
 @pytest.mark.parametrize(
     ("raw", "raw_unit", "expected"),
     [
@@ -105,6 +112,11 @@ def test_fiscal_year_and_quarter_rules_require_india_context():
     assert (quarter.period_start, quarter.period_end) == (date(2024, 1, 1), date(2024, 3, 31))
     ambiguous = normalize_temporal("FY24", india_fy_context=False)
     assert ambiguous.period_start is None and ambiguous.warnings
+    bare_range = normalize_temporal("growth in 2024/25", india_fy_context=True)
+    assert (bare_range.period_start, bare_range.period_end) == (
+        date(2024, 4, 1),
+        date(2025, 3, 31),
+    )
 
 
 def test_year_ended_and_as_of_dates():
@@ -250,12 +262,48 @@ def test_partial_explicit_period_is_not_combined_with_inferred_period():
     assert result["period_end"] is None
 
 
+def test_evidence_period_corrects_inconsistent_extracted_dates():
+    fact = Fact(
+        document_id=PydanticObjectId(),
+        evidence_chunk_ids=[PydanticObjectId()],
+        subject="India",
+        predicate="real GDP growth",
+        raw_value="6.5",
+        raw_unit="percent",
+        value_type="NUMBER",
+        period_start=date(2024, 1, 1),
+        period_end=date(2025, 1, 1),
+    )
+
+    result = normalize_fact_fields(
+        fact,
+        evidence_context="Real GDP growth was 6.5 percent in 2024-25.",
+    )
+
+    assert (result["period_start"], result["period_end"]) == (
+        date(2024, 4, 1),
+        date(2025, 3, 31),
+    )
+
+
 @pytest.mark.parametrize(
     "raw",
     ["Revenue from Services", "revenue_from_services", "revenue from services"],
 )
 def test_predicate_formatting(raw):
     assert normalize_predicate(raw) == "revenue_from_services"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "real GDP growth (FY25)",
+        "real gross domestic product (GDP) growth moderated to",
+        "real GDP expected to grow",
+    ],
+)
+def test_predicate_formatting_canonicalizes_reporting_language(raw):
+    assert normalize_predicate(raw) == "real_gdp_growth"
 
 
 async def make_fact(**kwargs):

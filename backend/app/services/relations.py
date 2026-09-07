@@ -108,19 +108,37 @@ def _dimension(left: str | None, right: str | None) -> str:
     return "same" if _canonical(left) == _canonical(right) else "different"
 
 
+def _semantic_scope(value: str | None) -> str | None:
+    if not value:
+        return None
+    remainder = re.sub(
+        r"\b(?:FY\s*)?\d{4}\s*[-/]\s*\d{2,4}\b", " ", value, flags=re.IGNORECASE
+    )
+    remainder = re.sub(
+        r"\b(?:FY\s*)?\d{2,4}\b", " ", remainder, flags=re.IGNORECASE
+    )
+    remainder = re.sub(
+        r"\b(?:and|to|through)\b|[,;/&-]", " ", remainder, flags=re.IGNORECASE
+    )
+    return re.sub(r"\s+", " ", remainder).strip() or None
+
+
 def _status_indicator(fact: Fact) -> str | None:
     text = " ".join(
         [
             str(key) for key in fact.qualifiers
         ]
         + [str(value) for value in fact.qualifiers.values()]
-        + [fact.scope or ""]
+        + [fact.scope or "", fact.predicate]
     ).casefold()
     if re.search(r"\b(?:forecast|projected|projection|expected|guidance)\b", text):
         return "forecast"
-    if re.search(r"\b(?:estimate|estimated|preliminary)\b", text):
+    if re.search(r"\b(?:estimate|estimates|estimated|preliminary)\b", text):
         return "estimate"
-    if re.search(r"\b(?:actual|reported|observed|audited)\b", text):
+    if re.search(
+        r"\b(?:actual|reported|observed|audited|moderated|grew|rose|fell|declined)\b",
+        text,
+    ):
         return "actual"
     return None
 
@@ -138,7 +156,9 @@ def compare_context(fact_a: Fact, fact_b: Fact) -> dict[str, Any]:
         temporal = "unspecified"
 
     geography = _dimension(fact_a.geography, fact_b.geography)
-    scope = _dimension(fact_a.scope, fact_b.scope)
+    if geography == "one_missing" and fact_a.normalized_subject == fact_b.normalized_subject:
+        geography = "same_subject_inferred"
+    scope = _dimension(_semantic_scope(fact_a.scope), _semantic_scope(fact_b.scope))
     status_a, status_b = _status_indicator(fact_a), _status_indicator(fact_b)
     if status_a and status_b:
         qualifiers = "same_status" if status_a == status_b else f"{status_a}_vs_{status_b}"
@@ -436,6 +456,22 @@ def deterministic_assessment(fact_a: Fact, fact_b: Fact) -> Decision | None:
         )
     if result == "equivalent":
         if context["status"] == "context_difference":
+            if set(context["differences"]) == {"qualifiers"}:
+                if not value["exact"]:
+                    return Decision(
+                        FactRelationType.RECONCILABLE,
+                        0.9,
+                        "The small value difference is explained by an explicit reporting-status "
+                        "difference.",
+                        base_details,
+                    )
+                return Decision(
+                    FactRelationType.CORROBORATES,
+                    0.9,
+                    "The canonical values agree for the same claim despite a reporting-status "
+                    "difference.",
+                    base_details,
+                )
             return Decision(
                 FactRelationType.UNRELATED,
                 0.85,
@@ -587,6 +623,8 @@ def _compatible_value_types(fact: Fact) -> list[str | None]:
     compatible_types = [fact.value_type]
     if fact.normalized_unit in {"INR", "USD"}:
         compatible_types = ["CURRENCY", "NUMBER", "QUANTITY"]
+    elif fact.normalized_unit == "PERCENT":
+        compatible_types = ["PERCENTAGE", "NUMBER", "QUANTITY"]
     elif fact.value_type in {"NUMBER", "QUANTITY"}:
         compatible_types = ["NUMBER", "QUANTITY"]
     return compatible_types

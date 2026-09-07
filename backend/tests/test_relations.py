@@ -154,6 +154,84 @@ def test_currency_normalized_from_number_type_is_compatible():
     assert decision.relation_type is FactRelationType.CORROBORATES
 
 
+def test_percentage_normalized_from_number_type_is_compatible():
+    period = {
+        "period_start": date(2024, 4, 1),
+        "period_end": date(2025, 3, 31),
+    }
+    left = fact(
+        subject="India",
+        normalized_subject="india",
+        predicate="real GDP moderated to",
+        normalized_predicate="real_gdp_growth",
+        raw_value="6.5 per cent",
+        normalized_value=6.5,
+        value_type="PERCENTAGE",
+        raw_unit="per cent",
+        normalized_unit="PERCENT",
+        geography="India",
+        **period,
+    )
+    right = fact(
+        subject="India",
+        normalized_subject="india",
+        predicate="real GDP expected to grow",
+        normalized_predicate="real_gdp_growth",
+        raw_value="6.5",
+        normalized_value=6.5,
+        value_type="NUMBER",
+        raw_unit="percent",
+        normalized_unit="PERCENT",
+        scope="2024/25 and 2025/26",
+        **period,
+    )
+
+    decision = deterministic_assessment(left, right)
+
+    assert decision is not None
+    assert decision.relation_type is FactRelationType.CORROBORATES
+    assert decision.reasoning_details["context"]["differences"] == ["qualifiers"]
+
+
+def test_estimate_and_forecast_difference_is_reconcilable():
+    period = {
+        "period_start": date(2024, 4, 1),
+        "period_end": date(2025, 3, 31),
+    }
+    left = fact(
+        subject="India",
+        normalized_subject="india",
+        predicate="real GDP growth",
+        normalized_predicate="real_gdp_growth",
+        raw_value="6.4",
+        normalized_value=6.4,
+        value_type="PERCENTAGE",
+        raw_unit="per cent",
+        normalized_unit="PERCENT",
+        scope="first advance estimates",
+        **period,
+    )
+    right = fact(
+        subject="India",
+        normalized_subject="india",
+        predicate="real GDP expected to grow",
+        normalized_predicate="real_gdp_growth",
+        raw_value="6.5",
+        normalized_value=6.5,
+        value_type="NUMBER",
+        raw_unit="percent",
+        normalized_unit="PERCENT",
+        scope="2024/25 and 2025/26",
+        **period,
+    )
+
+    decision = deterministic_assessment(left, right)
+
+    assert decision is not None
+    assert decision.relation_type is FactRelationType.RECONCILABLE
+    assert "qualifiers" in decision.reasoning_details["context"]["differences"]
+
+
 @pytest.mark.parametrize(
     "left_fields,right_fields",
     [

@@ -5,6 +5,7 @@ from beanie import PydanticObjectId
 
 from app.core.exceptions import AppError
 from app.models.common import utc_now
+from app.models.evidence_chunk import EvidenceChunk
 from app.models.fact import Fact
 from app.normalization.dates import normalize_temporal, parse_date_literal
 from app.normalization.entities import normalize_entity
@@ -38,12 +39,27 @@ def _has_india_context(fact: Fact) -> bool:
     )
 
 
-def normalize_fact_fields(fact: Fact) -> dict[str, Any]:
+def _evidence_neighborhood(text: str, raw_value: object, radius: int = 500) -> str:
+    needle = str(raw_value or "").strip()
+    if not needle:
+        return ""
+    position = text.find(needle)
+    if position < 0 or text.find(needle, position + len(needle)) >= 0:
+        return ""
+    return text[max(0, position - radius) : position + len(needle) + radius]
+
+
+def normalize_fact_fields(fact: Fact, *, evidence_context: str = "") -> dict[str, Any]:
     entity = normalize_entity(fact.subject)
     predicate = normalize_predicate(fact.predicate)
     value = normalize_value(fact.raw_value, fact.value_type, fact.raw_unit)
-    context = _context_text(fact)
+    structured_context = _context_text(fact)
+    context = " | ".join(filter(None, (structured_context, evidence_context)))
     temporal = normalize_temporal(context, india_fy_context=_has_india_context(fact))
+    evidence_temporal = normalize_temporal(
+        evidence_context,
+        india_fy_context=_has_india_context(fact),
+    )
 
     if fact.value_type == "ENTITY" and isinstance(fact.raw_value, str):
         normalized_entity = normalize_entity(fact.raw_value)
@@ -62,11 +78,15 @@ def normalize_fact_fields(fact: Fact) -> dict[str, Any]:
     rules = [*entity.rules, *(["predicate_snake_case"] if predicate else []), *value.rules]
     rules.extend(temporal.rules)
     warnings = [*entity.warnings, *value.warnings, *temporal.warnings]
-    period_start = fact.period_start
-    period_end = fact.period_end
-    if period_start is None and period_end is None:
+    if evidence_temporal.period_start and evidence_temporal.period_end:
+        period_start = evidence_temporal.period_start
+        period_end = evidence_temporal.period_end
+    elif fact.period_start is None and fact.period_end is None:
         period_start = temporal.period_start
         period_end = temporal.period_end
+    else:
+        period_start = fact.period_start
+        period_end = fact.period_end
     return {
         "normalized_subject": entity.value,
         "normalized_predicate": predicate,
@@ -84,7 +104,13 @@ def normalize_fact_fields(fact: Fact) -> dict[str, Any]:
 
 
 async def normalize_fact(fact: Fact) -> tuple[bool, bool, bool, bool]:
-    result = normalize_fact_fields(fact)
+    chunks = await EvidenceChunk.find({"_id": {"$in": fact.evidence_chunk_ids}}).to_list()
+    evidence_context = " | ".join(
+        _evidence_neighborhood(chunk.text, fact.raw_value)
+        for chunk in chunks
+        if chunk.document_id == fact.document_id
+    )
+    result = normalize_fact_fields(fact, evidence_context=evidence_context)
     metadata = {**fact.metadata, "normalization": result.pop("normalization")}
     changes = {**result, "metadata": metadata}
     changed = any(getattr(fact, key) != value for key, value in changes.items())

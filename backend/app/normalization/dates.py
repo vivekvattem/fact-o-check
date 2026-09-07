@@ -59,7 +59,7 @@ def normalize_temporal(text: str, *, india_fy_context: bool) -> TemporalNormaliz
             result.rules.append("year_ended_period")
 
     fy = re.search(
-        r"\bFY\s*(?:(\d{4})\s*[-/]\s*(\d{2,4})|(\d{2})|(\d{4}))\b",
+        r"\b(?:FY\s*)?(?:(\d{4})\s*[-/]\s*(\d{2,4})|FY\s*(\d{2})|FY\s*(\d{4}))\b",
         text,
         re.IGNORECASE,
     )
