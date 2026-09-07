@@ -142,7 +142,7 @@ npm run build
 
 ## Current phase
 
-Phase 4 implemented. Ingestion, extraction, and normalization remain explicit operations. Normalized facts can be compared incrementally across documents, and the Relationships UI exposes classifications, source evidence, contextual checks, and safe reasoning metadata. Upload never triggers extraction, normalization, or comparison.
+Phase 5 validation completed with the bounded persisted Delhivery dataset. Ingestion and extraction remain explicit operations; comparison normalizes its persisted fact pool before candidate generation so it cannot reason over stale canonical fields. Facts can be compared incrementally across documents, and the Relationships UI exposes classifications, source evidence, contextual checks, and safe reasoning metadata. Upload never triggers extraction, normalization, or comparison.
 
 ## Fact extraction
 
@@ -211,7 +211,7 @@ Normalization is implemented as pure parsing modules for numbers, units, dates, 
 
 ### Canonical values and units
 
-- Currency values use base currency units: one INR or one USD. Indian and international scale words are expanded (`thousand`, `lakh`/`lac`, `million`, `crore`, and `billion`). For example, `₹8,142 crore` and `₹81,420 million` both become `81420000000 INR`. No foreign-exchange conversion occurs.
+- Currency values use base currency units: one INR or one USD. Indian and international scale words and common report abbreviations are expanded (`thousand`/`K`, `lakh`/`lac`, `million`/`Mn`, `crore`/`Cr`, and `billion`/`Bn`). For example, `₹8,142 Cr` and `₹81,420 million` both become `81420000000 INR`. No foreign-exchange conversion occurs.
 - Percentages use percentage points: `6.5%`, `6.5 percent`, and `6.50 per cent` become `6.5 PERCENT`, not `0.065`.
 - Plain numbers use `COUNT` unless an explicit unit is supplied. Quantities retain a normalized uppercase unit without unit conversion. Western and Indian comma grouping, decimals, leading minus signs, and enclosing-parentheses negatives are supported.
 - Boolean literals use `BOOLEAN`; directly parseable date facts use ISO `YYYY-MM-DD` with unit `DATE`. Unsupported types, currencies, ranges, approximate values, malformed grouping, or missing quantity units remain null with warnings.
@@ -222,7 +222,7 @@ Normalization is implemented as pure parsing modules for numbers, units, dates, 
 
 ### Entity and predicate rules
 
-Entity canonicalization folds case, whitespace, and surrounding punctuation and removes repeated terminal corporate suffixes such as `Limited`, `Ltd.`, `Inc.`, and `Corporation`. Generic references such as `the Company` remain unresolved because they require document-specific context. Predicate normalization performs formatting only: lowercase text and punctuation/whitespace become snake case, so `Revenue from Services` becomes `revenue_from_services`. It does not merge semantic synonyms.
+Entity canonicalization folds case, whitespace, and surrounding punctuation, removes repeated terminal corporate suffixes such as `Limited`, `Ltd.`, `Inc.`, and `Corporation`, and separates fiscal-period or unit labels from metric subjects. Generic references such as `the Company` remain unresolved because they require document-specific context. Predicate normalization performs formatting only: lowercase text and punctuation/whitespace become snake case, so `Revenue from Services` becomes `revenue_from_services`. It does not merge semantic synonyms.
 
 ### Normalization APIs
 
@@ -233,7 +233,7 @@ Entity canonicalization folds case, whitespace, and surrounding punctuation and 
 
 > Deterministic checks decide clear numerical relationships; LLM reasoning is reserved for ambiguous semantic context.
 
-The comparison pipeline is staged: candidate generation, comparability checks, deterministic value/context reasoning, optional semantic fallback, and persistence. Candidate generation starts with facts from the selected document and uses canonical subject plus compatible value types to query other documents. It never compares a fact with itself. Canonical pair ordering and a unique MongoDB index prevent reversed and repeated relations. Comparing a newly added document therefore extends the relation set without rebuilding old pairs.
+The comparison pipeline is staged: normalization, candidate generation, comparability checks, deterministic value/context reasoning, optional semantic fallback, and persistence. Candidate generation starts with facts from the selected document and uses compatible value types plus exact canonical subjects or conservative lexical subject matching. Lexical matching removes only safe stopwords, recognizes a small set of common revenue-reporting phrases, and requires 85% token-set similarity otherwise; its method, score, and shared tokens are persisted in safe reasoning metadata. It never compares a fact with itself, and it does not merge `EBITDA` with `Adjusted EBITDA`. Canonical pair ordering and a unique MongoDB index prevent reversed and repeated relations. Comparing a newly added document therefore extends the relation set without rebuilding old pairs.
 
 Relations use `CORROBORATES`, `CONTRADICTS`, `RECONCILABLE`, `UNRELATED`, or `NEEDS_REVIEW`. Clear canonical equality corroborates. Material differences contradict only when subject, predicate, type, unit, and explicit context are comparable. Explicit period, scope, geography, or estimate/forecast/actual differences can make an apparent mismatch reconcilable. Missing normalization or one-sided context produces `NEEDS_REVIEW` rather than a forced conclusion.
 
@@ -243,7 +243,7 @@ Context comparison returns structured temporal, geography, scope, qualifier, sta
 
 Tolerance is typed rather than universal:
 
-- Currency requires the same canonical currency and allows a 0.1% relative display-rounding difference, expanded to 0.5% only with an explicit approximation marker.
+- Currency requires the same canonical currency and allows a 0.1% relative display-rounding difference, expanded to 0.5% with an explicit approximation marker or differing display scales.
 - Percentages use an absolute tolerance of 0.1 percentage points.
 - Counts are exact unless an approximation marker is present, when a 1% relative tolerance applies.
 - Quantities require the same normalized unit and use a 0.1% relative tolerance.
@@ -259,6 +259,23 @@ Only ambiguous predicate wording, textual meaning, or qualifier context can reac
 - `GET /api/relations` returns paginated relations and supports `relation_type`, `document_id`, `subject`, and `min_confidence` filters.
 - `GET /api/relations/{relation_id}` returns both facts with raw/canonical values, source documents, page numbers, evidence text, context, explanation, and safe reasoning details.
 
+## Required Assignment Cases
+
+A bounded deterministic-only validation used the persisted Delhivery FY24 Annual Report, Q4 FY24 Earnings Presentation, and prospectus. It made no semantic-fallback calls. The final persisted set contains 28 `NEEDS_REVIEW` and 102 `UNRELATED` relations. The available facts did not prove a `CORROBORATES`, `CONTRADICTS`, or `RECONCILABLE` case after all facts were normalized, so none is claimed here.
+
+### Case 4 — Verified extraction/reasoning failure
+
+The Annual Report page 5 extraction associated raw value `₹1,266Mn` with subject `Revenue from services`; the page layout shows that value as EBITDA. Verbatim-value and evidence-ID validation correctly preserved the cited source but cannot prove that a value was matched to the correct nearby label. A second failure mode appears in cross-document comparison: Annual Report page 7 revenue `81,415` (normalized to `81415000000 INR`) and Earnings Presentation page 6 revenue `₹8,142 Cr` (normalized to `81420000000 INR`) remain `NEEDS_REVIEW` because the annual chart fact omitted its FY24 context while the presentation fact retained it.
+
+Current mitigation is strict schema/provenance validation, layout bounding boxes in extraction context, conservative normalization, and `NEEDS_REVIEW` when context is one-sided. A future improvement should add deterministic spatial table grouping and explicit page-heading context propagation before extraction.
+
+## Demo Flow
+
+1. Open **Documents**, select the persisted FY24 Annual Report, and inspect evidence on page 5.
+2. Open **Facts** and inspect the `Revenue from services` / `₹1,266Mn` fact alongside its cited evidence to demonstrate the layout-label failure.
+3. Open **Relationships**, select **Needs Review**, and open the `81,415` versus `₹8,142 Cr` revenue pair.
+4. Compare each fact's raw and normalized values, source pages, and the structured explanation showing that one-sided temporal context prevented an unsupported conclusion.
+
 ### Current limitations
 
 - OCR is not implemented yet, so image-only pages may produce no textual evidence.
@@ -269,7 +286,7 @@ Only ambiguous predicate wording, textual meaning, or qualifier context can reac
 - Nonoverlapping window boundaries can split context. Large documents can hit caps, and skipped windows are not automatically resumed.
 - Strict verbatim-value validation may reject otherwise useful paraphrases or values spanning fragments.
 - No FX conversion, broad semantic entity resolution, embeddings, vector/graph database, RAG/chat, or deployment is implemented.
-- Candidate generation is conservative and exact-subject-first; semantically equivalent entities that normalize differently will not become candidates.
+- Candidate generation is deliberately conservative; synonyms outside the bounded reporting-phrase and high-threshold token rules require semantic fallback or remain unmatched.
 - Display tolerances are general typed defaults, not domain-specific accounting materiality thresholds. Sparse or ambiguous context intentionally produces review items.
 - Tests use MongoDB mocks and fake providers; real provider/account compatibility requires an optional live smoke test with a configured key.
 

@@ -14,6 +14,7 @@ from app.models.fact import Fact
 from app.schemas.facts import FactCandidate
 from app.services import facts as service
 from app.services.fact_extractor import (
+    PROMPT,
     EvidenceContext,
     ExtractorError,
     OpenAIFactExtractor,
@@ -22,6 +23,12 @@ from app.services.fact_extractor import (
     get_fact_extractor,
     output_schema,
 )
+
+
+def test_extraction_prompt_requires_stable_claim_roles_and_atomic_numeric_values():
+    assert "never use a period" in PROMPT
+    assert "concise stable metric/property name" in PROMPT
+    assert "raw_value must be only the exact numeric literal" in PROMPT
 
 
 class FakeFactExtractor:
@@ -227,6 +234,16 @@ async def test_window_bounds_order_no_overlap_or_dropped_text():
     assert len(windows) == len(set(windows))
 
 
+async def test_windows_preserve_layout_coordinates_for_table_association():
+    _, chunk = await source()
+    chunk.bbox = [10.0, 20.0, 30.0, 40.0]
+    await chunk.save()
+
+    windows = build_windows([chunk], settings())
+
+    assert windows[0][0].bbox == (10.0, 20.0, 30.0, 40.0)
+
+
 async def test_api_workflow_filters_detail_provenance_and_delete(client, monkeypatch):
     document, chunk = await source()
     fake = FakeFactExtractor([[candidate(chunk)]])
@@ -314,6 +331,7 @@ async def test_openai_adapter_without_network(monkeypatch, mode):
         payload = json.loads(request.content)
         assert payload["response_format"]["json_schema"]["strict"] is True
         assert str(chunk.id) in payload["messages"][1]["content"]
+        assert "bbox" in payload["messages"][1]["content"]
         if mode == "timeout":
             raise httpx.ReadTimeout("secret provider details", request=request)
         if mode == "http":
@@ -345,7 +363,7 @@ async def test_openai_adapter_without_network(monkeypatch, mode):
         ),
     )
     extractor = OpenAIFactExtractor(settings(llm_api_key="fake-test-key"))
-    window = (EvidenceContext(str(chunk.id), 1, chunk.text),)
+    window = (EvidenceContext(str(chunk.id), 1, chunk.text, bbox=(1, 2, 3, 4)),)
     if mode == "success":
         result = await extractor.extract(window)
         assert result[0]["qualifiers"] == {"basis": "reported"}

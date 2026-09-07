@@ -3,12 +3,16 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 SCALES = {
+    "k": Decimal("1000"),
     "thousand": Decimal("1000"),
     "lakh": Decimal("100000"),
     "lac": Decimal("100000"),
     "million": Decimal("1000000"),
+    "mn": Decimal("1000000"),
     "crore": Decimal("10000000"),
+    "cr": Decimal("10000000"),
     "billion": Decimal("1000000000"),
+    "bn": Decimal("1000000000"),
 }
 
 
@@ -27,8 +31,8 @@ def parse_number(text: str) -> ParsedNumber | None:
         value = value[1:-1].strip()
         negative_style = "parentheses"
     match = re.fullmatch(
-        r"(?:₹|\$|INR\b|USD\b)?\s*([+-]?\d[\d,]*(?:\.\d+)?)"
-        r"\s*(thousands?|lakhs?|lacs?|millions?|crores?|billions?)?\s*"
+        r"(?:₹|\$|INR\b|USD\b|Rs\.?)?\s*([+-]?\d[\d,]*(?:\.\d+)?)"
+        r"\s*(thousands?|lakhs?|lacs?|millions?|crores?|billions?|k|mn|cr|bn)?\s*"
         r"(percent|per\s+cent|%|[A-Za-z][A-Za-z0-9_./-]*)?",
         value,
         flags=re.IGNORECASE,

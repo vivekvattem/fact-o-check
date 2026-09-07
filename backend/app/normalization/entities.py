@@ -6,6 +6,15 @@ SUFFIX = re.compile(
     r"(?:\s|,)+(?:limited|ltd\.?|private\s+limited|pvt\.?\s+ltd\.?|incorporated|inc\.?|corp(?:oration)?\.?)$",
     re.IGNORECASE,
 )
+FISCAL_PREFIX = re.compile(r"^(?:(?:q[1-4]\s+)?fy\s*\d{2,4})\s+", re.IGNORECASE)
+FISCAL_SUFFIX = re.compile(
+    r"\s+(?:in|for|during)\s+(?:(?:q[1-4]\s+)?fy\s*\d{2,4})$",
+    re.IGNORECASE,
+)
+UNIT_QUALIFIER = re.compile(
+    r"\s*\((?:[₹$]\s*)?(?:k|mn|cr|bn|thousand|million|crore|billion|%)\)\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -30,4 +39,13 @@ def normalize_entity(value: str) -> EntityNormalization:
     if stripped != canonical:
         canonical = stripped
         rules.append("corporate_suffix_removed")
+    without_period = FISCAL_PREFIX.sub("", canonical)
+    without_period = FISCAL_SUFFIX.sub("", without_period)
+    if without_period != canonical:
+        canonical = without_period.strip()
+        rules.append("fiscal_label_removed")
+    without_unit = UNIT_QUALIFIER.sub("", canonical)
+    if without_unit != canonical:
+        canonical = without_unit.strip()
+        rules.append("unit_qualifier_removed")
     return EntityNormalization(canonical or None, rules)

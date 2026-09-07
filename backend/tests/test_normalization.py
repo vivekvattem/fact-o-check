@@ -27,6 +27,10 @@ from app.normalization.units import normalize_value
         ("₹-1,23,456.50", None, -123_456.5, "INR"),
         ("$2.5 billion", None, 2_500_000_000, "USD"),
         ("INR 2 crores", None, 20_000_000, "INR"),
+        ("₹127Cr", None, 1_270_000_000, "INR"),
+        ("Rs. 127 Cr", None, 1_270_000_000, "INR"),
+        ("₹8,142 Cr", None, 81_420_000_000, "INR"),
+        ("$2.5Bn", None, 2_500_000_000, "USD"),
     ],
 )
 def test_currency_normalization(raw, raw_unit, expected, unit):
@@ -42,6 +46,14 @@ def test_currency_requires_supported_explicit_currency():
     assert missing.value is None and missing.warnings
     assert unsupported.value is None and unsupported.warnings
     assert mixed.value is None and mixed.warnings
+
+
+def test_number_with_currency_unit_is_normalized_as_currency():
+    result = normalize_value("1,266", "NUMBER", "₹ million")
+
+    assert result.value == 1_266_000_000
+    assert result.unit == "INR"
+    assert "currency_to_base_unit" in result.rules
 
 
 @pytest.mark.parametrize(
@@ -136,6 +148,54 @@ def test_temporal_qualifier_key_value_forms():
 )
 def test_entity_formatting(raw, expected):
     assert normalize_entity(raw).value == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("FY24 revenue from services", "revenue from services"),
+        ("Revenue from services in FY24", "revenue from services"),
+        ("EBITDA (₹ million)", "ebitda"),
+    ],
+)
+def test_entity_formatting_removes_context_and_unit_labels(raw, expected):
+    assert normalize_entity(raw).value == expected
+
+
+def test_subject_and_predicate_supply_temporal_context():
+    fact = Fact(
+        document_id=PydanticObjectId(),
+        evidence_chunk_ids=[PydanticObjectId()],
+        subject="FY24 revenue from services",
+        predicate="revenue",
+        raw_value="₹8,142 Cr",
+        value_type="CURRENCY",
+    )
+
+    result = normalize_fact_fields(fact)
+
+    assert (result["period_start"], result["period_end"]) == (
+        date(2023, 4, 1),
+        date(2024, 3, 31),
+    )
+
+
+def test_rs_currency_supplies_india_fiscal_year_context():
+    fact = Fact(
+        document_id=PydanticObjectId(),
+        evidence_chunk_ids=[PydanticObjectId()],
+        subject="FY24 EBITDA",
+        predicate="value",
+        raw_value="Rs. 127 Cr",
+        value_type="CURRENCY",
+    )
+
+    result = normalize_fact_fields(fact)
+
+    assert (result["period_start"], result["period_end"]) == (
+        date(2023, 4, 1),
+        date(2024, 3, 31),
+    )
 
 
 def test_context_dependent_entity_alias_is_not_guessed():

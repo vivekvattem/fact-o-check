@@ -12,6 +12,7 @@ from app.models.evidence_chunk import EvidenceChunk
 from app.models.fact import Fact
 from app.models.fact_relation import FactRelation, FactRelationType
 from app.normalization.entities import normalize_entity
+from app.normalization.service import normalize_document_facts
 from app.schemas.relations import (
     RelationComparisonSummary,
     RelationPageResponse,
@@ -23,6 +24,9 @@ from app.services.facts import serialize_facts
 from app.services.relation_reasoner import FactRelationReasoner, get_relation_reasoner
 
 NUMERIC_TYPES = {"CURRENCY", "PERCENTAGE", "NUMBER", "QUANTITY"}
+GENERIC_VALUE_PREDICATES = {"amount", "is", "reported", "to", "total", "value", "was"}
+SAFE_SUBJECT_STOPWORDS = {"a", "an", "reported", "the"}
+REVENUE_REPORTING_BASES = {"customers", "operations", "services"}
 APPROXIMATION_PATTERN = re.compile(
     r"(?:\b(?:about|approx(?:imately)?|around|nearly|rounded)\b|[~≈])",
     re.IGNORECASE,
@@ -49,6 +53,47 @@ class Decision:
 
 def _canonical(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+def _subject_tokens(value: str | None) -> tuple[str, ...]:
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", _canonical(value))
+        if token not in SAFE_SUBJECT_STOPWORDS
+    ]
+    if (
+        len(tokens) == 3
+        and tokens[0] == "revenue"
+        and tokens[1] == "from"
+        and tokens[2] in REVENUE_REPORTING_BASES
+    ):
+        return ("revenue",)
+    return tuple(tokens)
+
+
+def _subject_match(fact_a: Fact, fact_b: Fact) -> dict[str, Any] | None:
+    left = fact_a.normalized_subject or normalize_entity(fact_a.subject).value
+    right = fact_b.normalized_subject or normalize_entity(fact_b.subject).value
+    if left and left == right:
+        return {"method": "exact_normalized_subject", "score": 1.0}
+    left_tokens, right_tokens = _subject_tokens(left), _subject_tokens(right)
+    if not left_tokens or not right_tokens:
+        return None
+    if left_tokens == right_tokens:
+        return {
+            "method": "common_reporting_phrase",
+            "score": 1.0,
+            "tokens": list(left_tokens),
+        }
+    left_set, right_set = set(left_tokens), set(right_tokens)
+    score = len(left_set & right_set) / len(left_set | right_set)
+    if score >= 0.85:
+        return {
+            "method": "conservative_token_similarity",
+            "score": round(score, 3),
+            "tokens": sorted(left_set & right_set),
+        }
+    return None
 
 
 def _temporal_value(fact: Fact) -> tuple[Any, Any, Any]:
@@ -164,6 +209,11 @@ def _has_rounding_indicator(fact: Fact) -> bool:
 
 def compare_values(fact_a: Fact, fact_b: Fact) -> dict[str, Any]:
     kind = (fact_a.value_type or "").upper()
+    if fact_a.normalized_unit == fact_b.normalized_unit and fact_a.normalized_unit in {
+        "INR",
+        "USD",
+    }:
+        kind = "CURRENCY"
     rounding = _has_rounding_indicator(fact_a) or _has_rounding_indicator(fact_b)
     details: dict[str, Any] = {
         "result": "ambiguous",
@@ -173,6 +223,7 @@ def compare_values(fact_a: Fact, fact_b: Fact) -> dict[str, Any]:
         "absolute_difference": None,
         "relative_difference": None,
         "rounding_indicators_present": rounding,
+        "scale_rounding_used": False,
         "exact": False,
     }
 
@@ -229,8 +280,13 @@ def compare_values(fact_a: Fact, fact_b: Fact) -> dict[str, Any]:
     details["exact"] = difference == 0
 
     if kind == "CURRENCY":
-        relative_tolerance = Decimal("0.005") if rounding else Decimal("0.001")
+        standard_tolerance = Decimal("0.001")
+        scaled = _scaled_representation(fact_a, fact_b)
+        relative_tolerance = Decimal("0.005") if rounding or scaled else standard_tolerance
         equivalent = difference == 0 or relative <= relative_tolerance
+        details["scale_rounding_used"] = (
+            scaled and difference != 0 and relative > standard_tolerance
+        )
         details["tolerance_used"] = f"currency relative <= {float(relative_tolerance):g}"
     elif kind == "PERCENTAGE":
         absolute_tolerance = Decimal("0.1")
@@ -253,7 +309,8 @@ def compare_values(fact_a: Fact, fact_b: Fact) -> dict[str, Any]:
 def _compatible_types(fact_a: Fact, fact_b: Fact) -> bool:
     left, right = (fact_a.value_type or "").upper(), (fact_b.value_type or "").upper()
     return left == right or (
-        {left, right} == {"NUMBER", "QUANTITY"}
+        left in NUMERIC_TYPES
+        and right in NUMERIC_TYPES
         and fact_a.normalized_unit is not None
         and fact_a.normalized_unit == fact_b.normalized_unit
     )
@@ -264,6 +321,18 @@ def _scaled_representation(fact_a: Fact, fact_b: Fact) -> bool:
         fact_a.raw_unit
     ) == _canonical(fact_b.raw_unit):
         return False
+    scale_tokens = (
+        "k",
+        "thousand",
+        "lakh",
+        "lac",
+        "mn",
+        "million",
+        "cr",
+        "crore",
+        "bn",
+        "billion",
+    )
     scale_sets = []
     for fact in (fact_a, fact_b):
         normalization = fact.metadata.get("normalization", {})
@@ -272,8 +341,8 @@ def _scaled_representation(fact_a: Fact, fact_b: Fact) -> bool:
             {
                 token
                 for rule in rules
-                for token in ("thousand", "lakh", "lac", "million", "crore", "billion")
-                if token in rule
+                for token in scale_tokens
+                if rule == f"{token}_scale" or rule.startswith(f"{token}_to_")
             }
         )
     return scale_sets[0] != scale_sets[1] and bool(scale_sets[0] | scale_sets[1])
@@ -310,7 +379,9 @@ def deterministic_assessment(fact_a: Fact, fact_b: Fact) -> Decision | None:
             "The facts cannot be compared safely because subject normalization is incomplete.",
             base_details,
         )
-    if fact_a.normalized_subject != fact_b.normalized_subject:
+    subject_match = _subject_match(fact_a, fact_b)
+    base_details["subject_match"] = subject_match
+    if subject_match is None:
         return Decision(
             FactRelationType.UNRELATED,
             0.99,
@@ -335,14 +406,16 @@ def deterministic_assessment(fact_a: Fact, fact_b: Fact) -> Decision | None:
     if fact_a.normalized_predicate != fact_b.normalized_predicate:
         left = set(fact_a.normalized_predicate.split("_"))
         right = set(fact_b.normalized_predicate.split("_"))
-        if not left & right:
+        both_generic = left <= GENERIC_VALUE_PREDICATES and right <= GENERIC_VALUE_PREDICATES
+        if not left & right and not both_generic:
             return Decision(
                 FactRelationType.UNRELATED,
                 0.95,
                 "The normalized predicates describe different claims.",
                 base_details,
             )
-        return None
+        if not both_generic:
+            return None
 
     value = compare_values(fact_a, fact_b)
     base_details["value_comparison"] = value
@@ -377,11 +450,14 @@ def deterministic_assessment(fact_a: Fact, fact_b: Fact) -> Decision | None:
                 "Equivalent values cannot be linked confidently because context is incomplete.",
                 base_details,
             )
-        if value["exact"] and _scaled_representation(fact_a, fact_b):
+        if (value["exact"] and _scaled_representation(fact_a, fact_b)) or value[
+            "scale_rounding_used"
+        ]:
             return Decision(
                 FactRelationType.RECONCILABLE,
                 0.97,
-                "Different displayed units resolve to the same canonical value.",
+                "Different displayed scales resolve to the same canonical value "
+                "within rounding tolerance.",
                 base_details,
             )
         if value["rounding_indicators_present"] and not value["exact"]:
@@ -507,37 +583,38 @@ async def classify_pair(
     )
 
 
-def _candidate_filter(fact: Fact) -> dict[str, Any] | None:
-    subject_filter: dict[str, Any]
-    if fact.normalized_subject:
-        subject_filter = {"normalized_subject": fact.normalized_subject}
-    elif fact.subject:
-        subject_filter = {"subject": fact.subject}
-    else:
-        return None
+def _compatible_value_types(fact: Fact) -> list[str | None]:
     compatible_types = [fact.value_type]
-    if fact.value_type == "NUMBER":
-        compatible_types.append("QUANTITY")
-    elif fact.value_type == "QUANTITY":
-        compatible_types.append("NUMBER")
-    return {
-        **subject_filter,
-        "document_id": {"$ne": fact.document_id},
-        "value_type": {"$in": compatible_types},
-    }
+    if fact.normalized_unit in {"INR", "USD"}:
+        compatible_types = ["CURRENCY", "NUMBER", "QUANTITY"]
+    elif fact.value_type in {"NUMBER", "QUANTITY"}:
+        compatible_types = ["NUMBER", "QUANTITY"]
+    return compatible_types
 
 
-async def generate_candidates(document_id: PydanticObjectId) -> list[tuple[Fact, Fact]]:
+async def generate_candidates(
+    document_id: PydanticObjectId,
+) -> list[tuple[Fact, Fact, dict[str, Any]]]:
     source_facts = await Fact.find(Fact.document_id == document_id).to_list()
-    pairs: dict[tuple[str, str], tuple[Fact, Fact]] = {}
+    other_facts = await Fact.find(Fact.document_id != document_id).to_list()
+    pairs: dict[tuple[str, str], tuple[Fact, Fact, dict[str, Any]]] = {}
     for fact in source_facts:
-        candidate_filter = _candidate_filter(fact)
-        if candidate_filter is None:
-            continue
-        for candidate in await Fact.find(candidate_filter).to_list():
+        compatible_types = _compatible_value_types(fact)
+        for candidate in other_facts:
+            if candidate.value_type not in compatible_types:
+                continue
+            match = _subject_match(fact, candidate)
+            if match is None:
+                continue
             first, second = sorted((fact, candidate), key=lambda item: str(item.id))
-            pairs[(str(first.id), str(second.id))] = (first, second)
+            pairs[(str(first.id), str(second.id))] = (first, second, match)
     return list(pairs.values())
+
+
+async def _normalize_comparison_pool() -> None:
+    document_ids = await Fact.get_motor_collection().distinct("document_id")
+    for candidate_id in sorted(document_ids, key=str):
+        await normalize_document_facts(PydanticObjectId(candidate_id))
 
 
 async def compare_document_facts(
@@ -545,27 +622,43 @@ async def compare_document_facts(
     settings: Settings,
     *,
     reasoner: FactRelationReasoner | None = None,
+    allow_semantic_fallback: bool = True,
+    refresh_existing: bool = False,
 ) -> RelationComparisonSummary:
     await get_document_or_404(document_id)
+    await _normalize_comparison_pool()
     pairs = await generate_candidates(document_id)
     summary = RelationComparisonSummary(document_id=document_id, pairs_considered=len(pairs))
     reasoner_checked = reasoner is not None
-    for fact_a, fact_b in pairs:
+    for fact_a, fact_b, candidate_match in pairs:
         existing = await FactRelation.find_one(
             FactRelation.fact_a_id == fact_a.id,
             FactRelation.fact_b_id == fact_b.id,
         )
-        if existing is not None:
+        if existing is not None and not refresh_existing:
             summary.duplicates_skipped += 1
             continue
         assessment = deterministic_assessment(fact_a, fact_b)
-        if assessment is None and not reasoner_checked:
+        if assessment is None and allow_semantic_fallback and not reasoner_checked:
             try:
                 reasoner = get_relation_reasoner(settings)
             except AppError:
                 reasoner = None
             reasoner_checked = True
-        decision = assessment or await classify_pair(fact_a, fact_b, reasoner=reasoner)
+        decision = assessment or await classify_pair(
+            fact_a,
+            fact_b,
+            reasoner=reasoner if allow_semantic_fallback else None,
+        )
+        decision.reasoning_details["candidate_match"] = candidate_match
+        if existing is not None:
+            existing.relation_type = decision.relation_type
+            existing.confidence = decision.confidence
+            existing.explanation = decision.explanation
+            existing.reasoning_details = decision.reasoning_details
+            await existing.save()
+            summary.duplicates_skipped += 1
+            continue
         relation = FactRelation(
             fact_a_id=fact_a.id,
             fact_b_id=fact_b.id,

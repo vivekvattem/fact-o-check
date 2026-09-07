@@ -18,6 +18,13 @@ Identify the subject and predicate. Copy raw_value EXACTLY from a cited evidence
 including original punctuation and formatting. Capture raw unit, dates/period, geography,
 scope and qualifiers only when supplied. Dates must be ISO dates; do not invent a day or month
 for an ambiguous period (preserve its original label in qualifiers instead).
+Use the entity, organization, or geography the claim is about as subject; never use a period,
+value, table heading, or metric label as the subject. Use a concise stable metric/property name
+as predicate, not a sentence or the value itself. For NUMBER, PERCENTAGE, CURRENCY, and QUANTITY,
+raw_value must be only the exact numeric literal (including its attached symbol/scale), without
+surrounding prose or a second measure. Put currency, scale, and measurement labels in raw_unit.
+When layout bounding boxes are present, associate table or slide values with the label directly
+above or below in the same visual column; do not infer associations from text order alone.
 Every fact must cite at least one supplied evidence_chunk_id; cite all chunks needed for context.
 Never invent missing information. Use null or empty qualifiers when absent; lower confidence
 for ambiguity rather than guessing. Omit unsupported claims. Return an empty facts list when
@@ -32,6 +39,7 @@ class EvidenceContext:
     page_number: int
     text: str
     text_offset: int = 0
+    bbox: tuple[float, float, float, float] | None = None
 
 
 Window = tuple[EvidenceContext, ...]
@@ -51,7 +59,15 @@ def build_windows(chunks: list[EvidenceChunk], settings: Settings) -> list[Windo
             ):
                 windows.append(tuple(current))
                 current, size = [], 0
-            current.append(EvidenceContext(str(chunk.id), chunk.page_number, text, start))
+            current.append(
+                EvidenceContext(
+                    str(chunk.id),
+                    chunk.page_number,
+                    text,
+                    start,
+                    tuple(chunk.bbox) if chunk.bbox else None,
+                )
+            )
             size += len(text)
     if current:
         windows.append(tuple(current))
@@ -123,6 +139,7 @@ class OpenAICompatibleFactExtractor:
                                 "page": c.page_number,
                                 "text": c.text,
                                 "text_offset": c.text_offset,
+                                "bbox": c.bbox,
                             }
                             for c in window
                         ]

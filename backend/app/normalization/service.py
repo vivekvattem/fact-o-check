@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from beanie import PydanticObjectId
@@ -15,7 +16,7 @@ from app.services.facts import document_fact_lease
 
 
 def _context_text(fact: Fact) -> str:
-    values = [fact.scope, fact.geography]
+    values = [fact.subject, fact.predicate, fact.scope, fact.geography]
     values.extend(
         f"{key.replace('_', ' ')}: {value}"
         for key, value in fact.qualifiers.items()
@@ -29,7 +30,12 @@ def _context_text(fact: Fact) -> str:
 def _has_india_context(fact: Fact) -> bool:
     context = _context_text(fact).casefold()
     currency = f"{fact.raw_value or ''} {fact.raw_unit or ''}".casefold()
-    return "india" in context or "₹" in currency or "inr" in currency
+    return (
+        "india" in context
+        or "₹" in currency
+        or "inr" in currency
+        or bool(re.search(r"\brs\.?\b", currency))
+    )
 
 
 def normalize_fact_fields(fact: Fact) -> dict[str, Any]:

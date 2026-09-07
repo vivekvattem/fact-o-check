@@ -20,6 +20,7 @@ from app.services.relation_reasoner import (
     relation_output_schema,
 )
 from app.services.relations import (
+    _subject_match,
     classify_pair,
     compare_document_facts,
     deterministic_assessment,
@@ -116,6 +117,43 @@ def test_equivalent_scaled_currency_is_reconcilable():
     assert decision.reasoning_details["unit_equivalence"] is True
 
 
+def test_scaled_currency_rounding_is_reconcilable():
+    left = fact(
+        raw_value="₹1,266 Mn",
+        normalized_value=1_266_000_000,
+        value_type="NUMBER",
+        metadata={"normalization": {"rules_applied": ["mn_to_inr"]}},
+    )
+    right = fact(
+        raw_value="Rs. 127 Cr",
+        normalized_value=1_270_000_000,
+        metadata={"normalization": {"rules_applied": ["cr_to_inr"]}},
+    )
+
+    decision = deterministic_assessment(left, right)
+
+    assert decision is not None
+    assert decision.relation_type is FactRelationType.RECONCILABLE
+    assert decision.reasoning_details["value_comparison"]["scale_rounding_used"] is True
+
+
+def test_generic_value_predicates_compare_the_metric_subject():
+    left = fact(normalized_predicate="value")
+    right = fact(normalized_predicate="to")
+
+    assert relation_type(left, right) is FactRelationType.CORROBORATES
+
+
+def test_currency_normalized_from_number_type_is_compatible():
+    left = fact(value_type="NUMBER")
+    right = fact(raw_value="₹126.6 crore", value_type="CURRENCY")
+
+    decision = deterministic_assessment(left, right)
+
+    assert decision is not None
+    assert decision.relation_type is FactRelationType.CORROBORATES
+
+
 @pytest.mark.parametrize(
     "left_fields,right_fields",
     [
@@ -207,6 +245,21 @@ def test_clearly_different_claims_are_unrelated(right_fields):
     left = fact(scope="India", normalized_value=100)
     right = fact(**right_fields)
     assert relation_type(left, right) is FactRelationType.UNRELATED
+
+
+def test_conservative_subject_matching_handles_reporting_phrases_only():
+    revenue = fact(subject="Revenue", normalized_subject="revenue")
+    operations = fact(
+        subject="Revenue from operations",
+        normalized_subject="revenue from operations",
+    )
+    adjusted_ebitda = fact(subject="Adjusted EBITDA", normalized_subject="adjusted ebitda")
+    ebitda = fact(subject="EBITDA", normalized_subject="ebitda")
+
+    match = _subject_match(revenue, operations)
+
+    assert match is not None and match["method"] == "common_reporting_phrase"
+    assert _subject_match(adjusted_ebitda, ebitda) is None
 
 
 def test_missing_normalization_and_context_prefer_review():
@@ -424,6 +477,66 @@ async def test_incremental_comparison_duplicate_and_reversed_pair_prevention():
     assert incremental.pairs_considered == 2
     assert incremental.relations_created == 2
     assert await FactRelation.count() == 3
+
+
+async def test_document_comparison_can_disable_semantic_fallback():
+    _first, _, _ = await source("first.pdf", 100)
+    second, _, _ = await source("second.pdf", 100)
+    second_fact = await Fact.find_one(Fact.document_id == second.id)
+    second_fact.predicate = "Revenue amount"
+    second_fact.normalized_predicate = None
+    await second_fact.save()
+    reasoner = FakeReasoner(error=AssertionError("must not be called"))
+
+    summary = await compare_document_facts(
+        second.id,
+        settings(),
+        reasoner=reasoner,
+        allow_semantic_fallback=False,
+    )
+
+    assert summary.needs_review == 1
+    assert reasoner.calls == []
+
+
+async def test_document_comparison_can_refresh_existing_relation():
+    first, _, _ = await source("first.pdf", 100)
+    second, _, second_fact = await source("second.pdf", 100)
+    await compare_document_facts(second.id, settings())
+    second_fact.raw_value = "150"
+    second_fact.normalized_value = None
+    await second_fact.save()
+
+    await compare_document_facts(first.id, settings(), refresh_existing=True)
+
+    relation = await FactRelation.find_one()
+    assert relation is not None
+    assert relation.relation_type is FactRelationType.CONTRADICTS
+
+
+async def test_comparison_normalizes_pool_and_records_lexical_candidate_match():
+    _first, _, first_fact = await source("first.pdf", 100)
+    second, _, second_fact = await source("second.pdf", 100)
+    first_fact.subject = "Revenue"
+    first_fact.predicate = "value"
+    first_fact.normalized_subject = None
+    first_fact.normalized_predicate = None
+    await first_fact.save()
+    second_fact.subject = "Revenue from operations"
+    second_fact.predicate = "value"
+    second_fact.normalized_subject = None
+    second_fact.normalized_predicate = None
+    await second_fact.save()
+
+    summary = await compare_document_facts(second.id, settings())
+
+    assert summary.corroborates == 1
+    relation = await FactRelation.find_one()
+    assert relation is not None
+    assert relation.reasoning_details["candidate_match"]["method"] == (
+        "common_reporting_phrase"
+    )
+    assert (await Fact.get(first_fact.id)).normalized_subject == "revenue"
 
 
 async def test_relation_api_filters_and_detail_are_evidence_grounded(client):

@@ -24,6 +24,8 @@ def normalize_value(
     if kind == "PERCENTAGE":
         return normalize_percentage(text, raw_unit)
     if kind in {"NUMBER", "QUANTITY"}:
+        if _currency_codes(text, raw_unit):
+            return normalize_currency(text, raw_unit)
         return normalize_numeric(text, raw_unit, quantity=kind == "QUANTITY")
     if kind == "BOOLEAN":
         lowered = text.casefold()
@@ -38,12 +40,7 @@ def normalize_value(
 
 
 def normalize_currency(text: str, raw_unit: str | None) -> ValueNormalization:
-    currencies = set()
-    combined = f"{text} {raw_unit or ''}"
-    if "₹" in combined or re.search(r"\bINR\b", combined, re.IGNORECASE):
-        currencies.add("INR")
-    if "$" in combined or re.search(r"\bUSD\b", combined, re.IGNORECASE):
-        currencies.add("USD")
+    currencies = _currency_codes(text, raw_unit)
     if len(currencies) != 1:
         reason = "currency is missing" if not currencies else "multiple currencies are present"
         return ValueNormalization(warnings=[reason])
@@ -62,6 +59,16 @@ def normalize_currency(text: str, raw_unit: str | None) -> ValueNormalization:
     if parsed.negative_style:
         rules.append("parentheses_as_negative")
     return ValueNormalization(json_number(normalized), currency, rules)
+
+
+def _currency_codes(text: str, raw_unit: str | None) -> set[str]:
+    currencies = set()
+    combined = f"{text} {raw_unit or ''}"
+    if "₹" in combined or re.search(r"\b(?:INR|Rs\.?)\b", combined, re.IGNORECASE):
+        currencies.add("INR")
+    if "$" in combined or re.search(r"\bUSD\b", combined, re.IGNORECASE):
+        currencies.add("USD")
+    return currencies
 
 
 def normalize_percentage(text: str, raw_unit: str | None) -> ValueNormalization:
