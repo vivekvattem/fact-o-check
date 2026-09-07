@@ -27,15 +27,23 @@ const metrics = [
 export function OverviewPage() {
   const [apiStatus, setApiStatus] = useState<ConnectionState>("checking");
   const [databaseStatus, setDatabaseStatus] = useState<ConnectionState>("checking");
+  const [documentCount, setDocumentCount] = useState(0);
 
   useEffect(() => {
     let active = true;
 
     async function checkConnections() {
-      const healthResult = await Promise.allSettled([api.health(), api.ready()]);
+      const healthResult = await Promise.allSettled([
+        api.health(),
+        api.ready(),
+        api.documents.list(),
+      ]);
       if (!active) return;
       setApiStatus(healthResult[0].status === "fulfilled" ? "connected" : "unavailable");
       setDatabaseStatus(healthResult[1].status === "fulfilled" ? "connected" : "unavailable");
+      if (healthResult[2].status === "fulfilled") {
+        setDocumentCount(healthResult[2].value.length);
+      }
     }
 
     void checkConnections();
@@ -61,7 +69,7 @@ export function OverviewPage() {
               <Icon size={18} strokeWidth={1.8} />
             </div>
             <span>{label}</span>
-            <strong>{value}</strong>
+            <strong>{label === "Documents" ? documentCount : value}</strong>
           </article>
         ))}
       </section>
@@ -118,4 +126,3 @@ function StatusRow({ icon: Icon, label, status }: StatusRowProps) {
     </div>
   );
 }
-

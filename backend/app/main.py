@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.documents import router as documents_router
 from app.api.system import router as system_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
@@ -39,8 +40,8 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(application)
     application.include_router(system_router)
+    application.include_router(documents_router, prefix=settings.api_prefix)
     return application
 
 
 app = create_app()
-

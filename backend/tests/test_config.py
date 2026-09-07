@@ -23,3 +23,7 @@ def test_invalid_api_prefix_is_rejected() -> None:
     with pytest.raises(ValidationError, match="must start"):
         Settings(api_prefix="api", _env_file=None)
 
+
+def test_upload_size_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="greater than 0"):
+        Settings(max_upload_size_bytes=0, _env_file=None)

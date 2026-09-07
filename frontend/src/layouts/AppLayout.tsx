@@ -57,8 +57,8 @@ export function AppLayout() {
         </nav>
 
         <div className="sidebar__footer">
-          <span className="phase-pill">Phase 0</span>
-          <p>Architecture &amp; scaffold</p>
+          <span className="phase-pill">Phase 1</span>
+          <p>PDF evidence provenance</p>
         </div>
       </aside>
 
@@ -91,4 +91,3 @@ export function AppLayout() {
     </div>
   );
 }
-

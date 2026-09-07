@@ -1,19 +1,44 @@
-import type { HealthResponse, ReadyResponse } from "../types/api";
+import type {
+  ApiErrorResponse,
+  DocumentRecord,
+  DocumentUploadResponse,
+  EvidencePage,
+  HealthResponse,
+  ReadyResponse,
+} from "../types/api";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
-async function get<T>(path: string): Promise<T> {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 8_000): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 4_000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${API_URL}${path}`, {
-      headers: { Accept: "application/json" },
+      ...init,
+      headers: { Accept: "application/json", ...init?.headers },
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      const payload = (await response.json().catch(() => null)) as ApiErrorResponse | null;
+      throw new ApiError(
+        payload?.error.message ?? `Request failed with status ${response.status}`,
+        response.status,
+        payload?.error.code ?? "request_failed",
+      );
     }
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   } finally {
     window.clearTimeout(timeout);
@@ -21,7 +46,32 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  health: () => get<HealthResponse>("/health"),
-  ready: () => get<ReadyResponse>("/ready"),
+  health: () => request<HealthResponse>("/health"),
+  ready: () => request<ReadyResponse>("/ready"),
+  documents: {
+    list: () => request<DocumentRecord[]>("/api/documents"),
+    get: (documentId: string) => request<DocumentRecord>(`/api/documents/${documentId}`),
+    upload: (file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      return request<DocumentUploadResponse>(
+        "/api/documents",
+        { method: "POST", body },
+        60_000,
+      );
+    },
+    evidence: (
+      documentId: string,
+      options: { page?: number; offset?: number; limit?: number } = {},
+    ) => {
+      const params = new URLSearchParams();
+      if (options.page !== undefined) params.set("page", String(options.page));
+      if (options.offset !== undefined) params.set("offset", String(options.offset));
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      const query = params.size > 0 ? `?${params.toString()}` : "";
+      return request<EvidencePage>(`/api/documents/${documentId}/evidence${query}`);
+    },
+    delete: (documentId: string) =>
+      request<void>(`/api/documents/${documentId}`, { method: "DELETE" }),
+  },
 };
-

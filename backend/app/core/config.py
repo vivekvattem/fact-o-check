@@ -1,7 +1,7 @@
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     mongodb_uri: SecretStr = SecretStr("mongodb://localhost:27017")
     mongodb_db_name: str = "fact_o_check"
     cors_origins: str = "http://localhost:5173"
+    max_upload_size_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
 
     @field_validator("app_name", "mongodb_db_name")
     @classmethod

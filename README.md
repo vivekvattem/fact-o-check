@@ -6,7 +6,7 @@ Fact-O-Check is an evidence-grounded fact knowledge layer for PDFs. It is design
 
 > Facts, not text chunks, are the primary unit of knowledge.
 
-This repository currently contains the Phase 0 application and architecture scaffold. PDF ingestion, extraction, normalization, and relationship reasoning are intentionally not implemented yet.
+This repository contains the Phase 1 application: PDFs can be uploaded, parsed into page-level evidence blocks, and inspected through the API and frontend. Fact extraction, normalization, and relationship reasoning are intentionally not implemented yet.
 
 ## Why this architecture
 
@@ -30,7 +30,32 @@ MongoDB
 
 The backend uses a FastAPI lifespan to initialize and close a MongoDB/Beanie connection. Document models are registered in one place to prevent import cycles. The frontend is a strict TypeScript Vite application with React Router and a small typed API client.
 
-Future stages will add PDF ingestion, evidence extraction, fact extraction, normalization, relationship reasoning, and retrieval. None of those processing stages are implemented in Phase 0.
+PyMuPDF performs local layout-block extraction during ingestion. Future stages will add fact extraction, normalization, relationship reasoning, and retrieval; those stages are not implemented yet.
+
+## Ingestion flow
+
+1. `POST /api/documents` streams an uploaded file into bounded in-memory chunks and rejects empty, oversized, or non-PDF content.
+2. The service computes a SHA-256 content hash and returns the existing document when that hash is already present.
+3. A new `Document` moves through `UPLOADED` and `PROCESSING` states.
+4. PyMuPDF parses the bytes page-by-page off the API event loop and extracts useful text blocks.
+5. Evidence blocks are stored with the document identifier, 1-indexed page number, ordered block index, bounding box, source block number, and page dimensions.
+6. The document becomes `PROCESSED` with its page count, or `FAILED` with a preserved error message when parsing fails.
+
+Original PDF bytes are not persisted locally or in MongoDB. Phase 1 stores document metadata and extracted evidence only.
+
+## Evidence and provenance
+
+The provenance path is:
+
+```text
+Document → 1-indexed page → ordered EvidenceChunk
+```
+
+`EvidenceChunk` records reference a document by `PydanticObjectId`; they do not embed the full document. Each chunk retains a PyMuPDF bounding box and ordering metadata so later phases can cite a page, reconstruct approximate reading order, and investigate layout or table extraction failures. Deleting a document cascades to its evidence chunks.
+
+Layout blocks are kept separate instead of merging a whole PDF into one text field. Whitespace is normalized within lines, line boundaries are preserved, non-text layout blocks are ignored, and isolated one-token fragments are filtered out. Blank pages are valid and simply produce no evidence chunks.
+
+Duplicate detection is content-based rather than filename-based. Uploading the same bytes under a different filename returns the original document with `already_existed: true` and creates no additional evidence.
 
 ## Project structure
 
@@ -95,6 +120,8 @@ For Atlas, copy `backend/.env.example` to `backend/.env`, replace `MONGODB_URI` 
 
 `CORS_ORIGINS` accepts a comma-separated list when more than one frontend origin is needed.
 
+`MAX_UPLOAD_SIZE_BYTES` sets the in-memory upload ceiling and defaults to 25 MiB.
+
 ### Frontend
 
 ```bash
@@ -115,15 +142,22 @@ npm run build
 
 ## Current phase
 
-Phase 0 complete. The repository contains the modular backend foundation, MongoDB/Beanie schemas, health and readiness behavior, test scaffold, and the routed frontend dashboard. Processing buttons and data views are placeholders by design.
+Phase 1 complete. The repository supports PDF upload, hash-based deduplication, lifecycle states, PyMuPDF layout extraction, evidence persistence and inspection, list/detail/delete APIs, and a functional document UI. The Overview document count now uses live API data.
+
+### Current limitations
+
+- OCR is not implemented yet, so image-only pages may produce no textual evidence.
+- Original PDF files are not retained after in-memory processing.
+- PyMuPDF block order is approximate for complex multi-column layouts and tables.
+- Upload processing runs within the request lifecycle; a durable background job queue is deferred.
+- Fact extraction, embeddings, normalization, and relationship reasoning remain out of scope for Phase 1.
 
 ## Roadmap
 
-- Phase 1 — PDF ingestion and evidence
+- Phase 1 — PDF ingestion and evidence (complete)
 - Phase 2 — Fact extraction
 - Phase 3 — Normalization
 - Phase 4 — Relationship reasoning
 - Phase 5 — Required-case validation
 - Phase 6 — UI polish and generalization
 - Phase 7 — Deployment and demo
-

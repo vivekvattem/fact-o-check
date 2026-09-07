@@ -12,6 +12,7 @@ from app.models.common import utc_now
 class EvidenceChunk(BeanieDocument):
     document_id: PydanticObjectId
     page_number: int = Field(ge=1)
+    block_index: int = Field(ge=0)
     text: str = Field(min_length=1)
     bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
     metadata: dict[str, Any] | None = None
@@ -22,4 +23,11 @@ class EvidenceChunk(BeanieDocument):
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("document_id", ASCENDING)]),
             IndexModel([("document_id", ASCENDING), ("page_number", ASCENDING)]),
+            IndexModel(
+                [
+                    ("document_id", ASCENDING),
+                    ("page_number", ASCENDING),
+                    ("block_index", ASCENDING),
+                ]
+            ),
         ]
