@@ -57,8 +57,8 @@ export function AppLayout() {
         </nav>
 
         <div className="sidebar__footer">
-          <span className="phase-pill">Phase 1</span>
-          <p>PDF evidence provenance</p>
+          <span className="phase-pill">Phase 3</span>
+          <p>Evidence to normalized facts</p>
         </div>
       </aside>
 
@@ -84,7 +84,7 @@ export function AppLayout() {
           <strong>Fact-O-Check</strong>
           <span />
         </header>
-        <main className="main-content">
+        <main className="main-content" id="main-content">
           <Outlet />
         </main>
       </div>

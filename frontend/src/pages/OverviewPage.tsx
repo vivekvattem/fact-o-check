@@ -1,12 +1,8 @@
 import {
-  AlertTriangle,
-  CheckCircle2,
   Database,
   Files,
-  GitMerge,
   ScanSearch,
   Server,
-  ShieldQuestion,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -15,19 +11,11 @@ import { PageHeader } from "../components/PageHeader";
 
 type ConnectionState = "checking" | "connected" | "unavailable";
 
-const metrics = [
-  { label: "Documents", value: 0, icon: Files, tone: "neutral" },
-  { label: "Facts", value: 0, icon: ScanSearch, tone: "neutral" },
-  { label: "Corroborated", value: 0, icon: CheckCircle2, tone: "positive" },
-  { label: "Contradictions", value: 0, icon: AlertTriangle, tone: "negative" },
-  { label: "Reconciled", value: 0, icon: GitMerge, tone: "info" },
-  { label: "Needs review", value: 0, icon: ShieldQuestion, tone: "warning" },
-] as const;
-
 export function OverviewPage() {
   const [apiStatus, setApiStatus] = useState<ConnectionState>("checking");
   const [databaseStatus, setDatabaseStatus] = useState<ConnectionState>("checking");
-  const [documentCount, setDocumentCount] = useState(0);
+  const [documentCount, setDocumentCount] = useState<number | null>(null);
+  const [factCount, setFactCount] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -37,6 +25,7 @@ export function OverviewPage() {
         api.health(),
         api.ready(),
         api.documents.list(),
+        api.facts.list({ limit: "1" }),
       ]);
       if (!active) return;
       setApiStatus(healthResult[0].status === "fulfilled" ? "connected" : "unavailable");
@@ -44,6 +33,7 @@ export function OverviewPage() {
       if (healthResult[2].status === "fulfilled") {
         setDocumentCount(healthResult[2].value.length);
       }
+      if (healthResult[3].status === "fulfilled") setFactCount(healthResult[3].value.total);
     }
 
     void checkConnections();
@@ -53,6 +43,10 @@ export function OverviewPage() {
   }, []);
 
   const backendUnavailable = apiStatus === "unavailable";
+  const metrics = [
+    { label: "Documents", value: documentCount, icon: Files, hint: "Sources in your library" },
+    { label: "Facts", value: factCount, icon: ScanSearch, hint: "Extracted knowledge records" },
+  ];
 
   return (
     <div className="page">
@@ -63,13 +57,13 @@ export function OverviewPage() {
       />
 
       <section className="metrics-grid" aria-label="Knowledge metrics">
-        {metrics.map(({ label, value, icon: Icon, tone }) => (
+        {metrics.map(({ label, value, icon: Icon, hint }) => (
           <article className="metric-card" key={label}>
-            <div className={`metric-card__icon metric-card__icon--${tone}`}>
+            <div className="metric-card__icon">
               <Icon size={18} strokeWidth={1.8} />
             </div>
-            <span>{label}</span>
-            <strong>{label === "Documents" ? documentCount : value}</strong>
+            <div className="metric-card__copy"><span>{label}</span><small>{hint}</small></div>
+            <strong>{value ?? "—"}</strong>
           </article>
         ))}
       </section>
@@ -81,7 +75,8 @@ export function OverviewPage() {
               <span className="eyebrow">System status</span>
               <h2>Connections</h2>
             </div>
-            <span className={`status-dot status-dot--${backendUnavailable ? "error" : "ok"}`} />
+            <span className={`status-dot status-dot--${backendUnavailable ? "error" : "ok"}`}
+              aria-label={backendUnavailable ? "Connection issue" : "Systems available"} />
           </div>
           <StatusRow icon={Server} label="Backend API" status={apiStatus} />
           <StatusRow icon={Database} label="MongoDB" status={databaseStatus} />
@@ -90,7 +85,7 @@ export function OverviewPage() {
         <article className="panel principles-panel">
           <span className="eyebrow">Core principle</span>
           <blockquote>“Facts, not text chunks, are the primary unit of knowledge.”</blockquote>
-          <p>Every future fact will retain a direct reference to the exact evidence it came from.</p>
+          <p>Every fact retains a direct reference to the exact evidence it came from.</p>
         </article>
       </section>
     </div>

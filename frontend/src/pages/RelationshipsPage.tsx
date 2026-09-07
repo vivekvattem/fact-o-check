@@ -33,11 +33,10 @@ export function RelationshipsPage() {
       <section className="panel panel--empty">
         <EmptyState
           icon={GitCompareArrows}
-          title="No relationships to review"
-          description="Fact comparisons and their evidence-grounded explanations will appear here in a later phase."
+          title="No relationships have been generated yet"
+          description="When relationship reasoning is available, comparisons and their supporting evidence will appear here."
         />
       </section>
     </div>
   );
 }
-

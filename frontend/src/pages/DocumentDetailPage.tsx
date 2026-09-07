@@ -4,14 +4,14 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  LoaderCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { DocumentRecord, EvidencePage } from "../types/api";
 import { ExtractFactsButton } from "../components/ExtractFactsButton";
+import { LoadingState } from "../components/LoadingState";
+import type { DocumentRecord, EvidencePage } from "../types/api";
 
 const PAGE_SIZE = 20;
 
@@ -69,8 +69,7 @@ export function DocumentDetailPage() {
   if (loading && document === null) {
     return (
       <div className="page loading-panel detail-loading">
-        <LoaderCircle className="spin" size={22} />
-        Loading evidence…
+        <LoadingState label="Loading document and evidence…" />
       </div>
     );
   }
@@ -112,26 +111,39 @@ export function DocumentDetailPage() {
         </span>
       </header>
 
-      <ExtractFactsButton key={documentId} documentId={documentId} status={document.status} />
-
       {document.error_message && (
         <div className="message message--error" role="alert">
           {document.error_message}
         </div>
       )}
 
-      <section className="metadata-grid" aria-label="Document metadata">
-        <Metadata label="Pages" value={String(document.page_count ?? "—")} />
-        <Metadata label="Evidence blocks" value={String(document.evidence_chunk_count)} />
-        <Metadata label="File size" value={formatBytes(document.file_size_bytes)} />
-        <Metadata label="SHA-256" value={`${document.content_hash.slice(0, 16)}…`} />
+      <section className="detail-section" aria-labelledby="metadata-heading">
+        <div className="section-heading">
+          <div><span className="eyebrow">Document record</span><h2 id="metadata-heading">Metadata</h2></div>
+        </div>
+        <div className="metadata-grid">
+          <Metadata label="Pages" value={String(document.page_count ?? "—")} />
+          <Metadata label="Evidence blocks" value={String(document.evidence_chunk_count)} />
+          <Metadata label="File size" value={formatBytes(document.file_size_bytes)} />
+          <Metadata label="SHA-256" value={`${document.content_hash.slice(0, 16)}…`} />
+        </div>
       </section>
 
-      <section className="evidence-section">
+      <section className="detail-section action-panel panel" aria-labelledby="actions-heading">
+        <div>
+          <span className="eyebrow">Knowledge actions</span>
+          <h2 id="actions-heading">Fact extraction</h2>
+          <p>Create structured facts from this document’s stored evidence.</p>
+        </div>
+        <ExtractFactsButton key={documentId} documentId={documentId} status={document.status} />
+      </section>
+
+      <section className="evidence-section detail-section" aria-labelledby="evidence-heading">
         <div className="evidence-toolbar">
           <div>
             <span className="eyebrow">Extracted content</span>
-            <h2>Evidence blocks</h2>
+            <h2 id="evidence-heading">Evidence blocks</h2>
+            <p className="section-description">Inspect the exact page content available to extraction.</p>
           </div>
           <label className="page-filter">
             <span>Page</span>
@@ -155,7 +167,7 @@ export function DocumentDetailPage() {
 
         {loading ? (
           <div className="evidence-empty">
-            <LoaderCircle className="spin" size={20} /> Loading evidence…
+            <LoadingState label="Loading evidence…" compact />
           </div>
         ) : evidence.items.length === 0 ? (
           <div className="evidence-empty">
@@ -180,7 +192,7 @@ export function DocumentDetailPage() {
           </div>
         )}
 
-        <div className="pagination">
+        <nav className="pagination" aria-label="Evidence pagination">
           <span>
             Showing {shownFrom}–{shownTo} of {evidence.total}
           </span>
@@ -204,7 +216,7 @@ export function DocumentDetailPage() {
               <ChevronRight size={16} />
             </button>
           </div>
-        </div>
+        </nav>
       </section>
     </div>
   );

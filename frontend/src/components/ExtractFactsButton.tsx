@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, ScanSearch } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -25,15 +25,18 @@ export function ExtractFactsButton({ documentId, status }: {
     }
   }
 
-  return <section className="extraction-controls" aria-label="Fact extraction">
+  return <div className="extraction-controls">
     <button type="button" className="button button--primary" onClick={() => void extract()}
       disabled={loading || status !== "PROCESSED"}>
-      {loading && <LoaderCircle className="spin" size={16} />}
+      {loading ? <LoaderCircle className="spin" size={16} aria-hidden="true" /> :
+        <ScanSearch size={16} aria-hidden="true" />}
       {loading ? "Extracting facts…" : "Extract Facts"}
     </button>
-    <Link to={`/facts?document_id=${documentId}`}>View document facts</Link>
+    <Link className="button button--secondary" to={`/facts?document_id=${documentId}`}>
+      View document facts
+    </Link>
     {error && <div className="message message--error" role="alert">{error}</div>}
-    {summary && <div className={`message ${summary.status !== "completed" ? "message--error" : ""}`}
+    {summary && <div className={`message ${summary.status !== "completed" ? "message--warning" : "message--success"}`}
       role="status">
       Extraction {summary.status}: {summary.facts_created} new facts,
       {" "}{summary.facts_deduplicated} duplicates skipped.
@@ -43,5 +46,5 @@ export function ExtractFactsButton({ documentId, status }: {
       {summary.facts_produced === 0 && " No supported facts were produced."}
       {summary.failures.map(f => <p key={f.window}>Window {f.window}: {f.code}</p>)}
     </div>}
-  </section>;
+  </div>;
 }
