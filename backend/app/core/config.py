@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
     llm_api_key: SecretStr = SecretStr("")
+    openrouter_api_key: SecretStr = SecretStr("")
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_http_referer: str | None = None
+    openrouter_x_title: str | None = "Fact-O-Check"
     llm_timeout_seconds: float = Field(default=45, gt=0, le=120)
     extraction_window_chars: int = Field(default=12000, ge=500, le=50000)
     extraction_window_chunks: int = Field(default=20, ge=1, le=100)
@@ -58,6 +62,19 @@ class Settings(BaseSettings):
         uri = value.get_secret_value()
         if not uri.startswith(("mongodb://", "mongodb+srv://")):
             raise ValueError("must be a mongodb:// or mongodb+srv:// URI")
+        return value
+
+    @field_validator("llm_provider")
+    @classmethod
+    def normalize_llm_provider(cls, value: str) -> str:
+        return value.strip().lower()
+
+    @field_validator("openrouter_base_url")
+    @classmethod
+    def validate_openrouter_base_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("must be an http:// or https:// URL")
         return value
 
     @property

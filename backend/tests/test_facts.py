@@ -17,7 +17,9 @@ from app.services.fact_extractor import (
     EvidenceContext,
     ExtractorError,
     OpenAIFactExtractor,
+    OpenRouterFactExtractor,
     build_windows,
+    get_fact_extractor,
     output_schema,
 )
 
@@ -368,6 +370,104 @@ def test_strict_provider_schema():
                 inspect(item)
 
     inspect(schema)
+
+
+def test_provider_selection_and_missing_keys():
+    assert isinstance(get_fact_extractor(settings(llm_api_key="openai-key")), OpenAIFactExtractor)
+    assert isinstance(
+        get_fact_extractor(
+            settings(
+                llm_provider="openrouter", openrouter_api_key="router-key", llm_model="vendor/model"
+            )
+        ),
+        OpenRouterFactExtractor,
+    )
+    with pytest.raises(AppError, match="OPENROUTER_API_KEY"):
+        get_fact_extractor(settings(llm_provider="openrouter"))
+    with pytest.raises(AppError, match="must be 'openai' or 'openrouter'"):
+        get_fact_extractor(settings(llm_provider="other", llm_api_key="key"))
+    with pytest.raises(AppError, match="LLM_MODEL"):
+        get_fact_extractor(settings(llm_model="", llm_api_key="key"))
+
+
+async def test_openrouter_adapter_uses_configured_base_url_and_headers(monkeypatch):
+    _, chunk = await source()
+    seen = {}
+
+    async def handle(request):
+        seen["url"] = str(request.url)
+        seen["headers"] = request.headers
+        seen["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps({"facts": [candidate(chunk)]})},
+                    }
+                ]
+            },
+        )
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    configured = settings(
+        llm_provider="openrouter",
+        llm_model="vendor/model",
+        openrouter_api_key="router-key",
+        openrouter_base_url="https://router.example/api/v1/",
+        openrouter_http_referer="https://fact-o-check.example",
+        openrouter_x_title="Fact-O-Check",
+    )
+    result = await get_fact_extractor(configured).extract(
+        (EvidenceContext(str(chunk.id), chunk.page_number, chunk.text),)
+    )
+    assert result == [candidate(chunk)]
+    assert seen["url"] == "https://router.example/api/v1/chat/completions"
+    assert seen["headers"]["authorization"] == "Bearer router-key"
+    assert seen["headers"]["http-referer"] == "https://fact-o-check.example"
+    assert seen["headers"]["x-title"] == "Fact-O-Check"
+    assert seen["payload"]["model"] == "vendor/model"
+    assert seen["payload"]["response_format"]["json_schema"]["strict"] is True
+
+
+async def test_openrouter_uses_default_base_url_without_optional_headers(monkeypatch):
+    _, chunk = await source()
+    seen = {}
+
+    async def handle(request):
+        seen["url"] = str(request.url)
+        seen["headers"] = request.headers
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps({"facts": []})},
+                    }
+                ]
+            },
+        )
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    extractor = OpenRouterFactExtractor(
+        settings(openrouter_api_key="router-key", openrouter_x_title=None)
+    )
+    assert await extractor.extract((EvidenceContext(str(chunk.id), 1, chunk.text),)) == []
+    assert seen["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert "http-referer" not in seen["headers"]
+    assert "x-title" not in seen["headers"]
 
 
 async def test_fact_persistence_requires_real_evidence():

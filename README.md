@@ -150,7 +150,7 @@ Phase 2 implemented. Phase 1 ingestion remains intact. Document Detail offers ex
 
 `FactExtractor` is an asynchronous protocol accepting bounded `EvidenceContext` windows and returning untrusted structured candidates. The workflow handles document eligibility, windowing, schema/provenance validation, deduplication, and persistence independently of the provider. Tests inject `FakeFactExtractor` and mock HTTP transport; no paid calls are required.
 
-The first adapter uses OpenAI Chat Completions with a strict JSON Schema response format, based on the [official Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs). Qualifiers travel as key/value text pairs because strict schemas disallow arbitrary object keys; the adapter converts them into the existing fact qualifiers dictionary. Refusals, truncation, malformed envelopes, HTTP failures, and timeouts produce safe error codes without returning provider bodies or logging API keys.
+The OpenAI and OpenRouter adapters use the same OpenAI-compatible Chat Completions request and strict JSON Schema response format. Qualifiers travel as key/value text pairs because strict schemas disallow arbitrary object keys; the adapter converts them into the existing fact qualifiers dictionary. Refusals, truncation, malformed envelopes, HTTP failures, and timeouts produce safe error codes without returning provider bodies or logging API keys.
 
 ### Configuration
 
@@ -160,6 +160,10 @@ Add these values to the ignored `backend/.env` (start the backend from `backend/
 LLM_PROVIDER=openai
 LLM_MODEL=gpt-4o-mini
 LLM_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_HTTP_REFERER=
+OPENROUTER_X_TITLE=Fact-O-Check
 LLM_TIMEOUT_SECONDS=45
 EXTRACTION_WINDOW_CHARS=12000
 EXTRACTION_WINDOW_CHUNKS=20
@@ -167,7 +171,13 @@ EXTRACTION_MAX_WINDOWS=30
 EXTRACTION_MAX_OUTPUT_TOKENS=4000
 ```
 
-Set a real key locally to enable extraction. An empty key does not prevent startup; extraction returns HTTP 503 `llm_not_configured`. Changing providers requires another protocol adapter and factory registration. The chosen model must support strict structured output. Evidence in each requested window is sent to the configured LLM provider; original PDFs are not sent. API storage is disabled with `store: false`.
+Set a real key locally to enable extraction. An empty key does not prevent startup; extraction returns HTTP 503 `llm_not_configured`. Unknown providers return HTTP 503 `llm_provider_unsupported`. The chosen model must support strict structured output. Evidence in each requested window is sent to the configured LLM provider; original PDFs are not sent. API storage is disabled with `store: false`.
+
+### Providers
+
+OpenAI uses `LLM_PROVIDER=openai`, `LLM_MODEL=<OpenAI model>`, and `LLM_API_KEY=<secret>`.
+
+OpenRouter uses `LLM_PROVIDER=openrouter`, `LLM_MODEL=<OpenRouter model slug>`, and `OPENROUTER_API_KEY=<secret>`. OpenRouter is OpenAI-compatible, so it can switch among compatible models without changing the extraction pipeline. `OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1`; `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` are optional attribution headers, with the title defaulting to `Fact-O-Check`.
 
 ### Fact schema and validation
 

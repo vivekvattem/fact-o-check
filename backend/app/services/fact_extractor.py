@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
+from pydantic import SecretStr
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
@@ -92,9 +93,19 @@ def output_schema() -> dict[str, Any]:
     }
 
 
-class OpenAIFactExtractor:
-    def __init__(self, settings: Settings) -> None:
+class OpenAICompatibleFactExtractor:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        base_url: str,
+        api_key: SecretStr,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.settings = settings
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.headers = headers or {}
 
     async def extract(self, window: Window) -> list[Any]:
         payload = {
@@ -126,9 +137,10 @@ class OpenAIFactExtractor:
         try:
             async with httpx.AsyncClient(timeout=self.settings.llm_timeout_seconds) as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    f"{self.base_url}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.settings.llm_api_key.get_secret_value()}"
+                        "Authorization": f"Bearer {self.api_key.get_secret_value()}",
+                        **self.headers,
                     },
                     json=payload,
                 )
@@ -158,15 +170,61 @@ class OpenAIFactExtractor:
             raise ExtractorError("malformed_output") from exc
 
 
+class OpenAIFactExtractor(OpenAICompatibleFactExtractor):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(
+            settings,
+            base_url="https://api.openai.com/v1",
+            api_key=settings.llm_api_key,
+        )
+
+
+class OpenRouterFactExtractor(OpenAICompatibleFactExtractor):
+    def __init__(self, settings: Settings) -> None:
+        headers = {
+            name: value
+            for name, value in {
+                "HTTP-Referer": settings.openrouter_http_referer,
+                "X-Title": settings.openrouter_x_title,
+            }.items()
+            if value
+        }
+        super().__init__(
+            settings,
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key,
+            headers=headers,
+        )
+
+
 def get_fact_extractor(settings: Settings) -> FactExtractor:
-    if (
-        settings.llm_provider != "openai"
-        or not settings.llm_model.strip()
-        or not settings.llm_api_key.get_secret_value().strip()
-    ):
+    if not settings.llm_model.strip():
+        raise AppError(
+            status_code=503,
+            code="llm_not_configured",
+            message="Configure LLM_MODEL and the active provider API key to extract facts.",
+        )
+    if settings.llm_provider == "openai":
+        if settings.llm_api_key.get_secret_value().strip():
+            return OpenAIFactExtractor(settings)
         raise AppError(
             status_code=503,
             code="llm_not_configured",
             message="Configure LLM_PROVIDER=openai, LLM_MODEL and LLM_API_KEY to extract facts.",
         )
-    return OpenAIFactExtractor(settings)
+    if settings.llm_provider == "openrouter":
+        if settings.openrouter_api_key.get_secret_value().strip():
+            return OpenRouterFactExtractor(settings)
+        raise AppError(
+            status_code=503,
+            code="llm_not_configured",
+            message=(
+                "Configure LLM_PROVIDER=openrouter, LLM_MODEL and OPENROUTER_API_KEY "
+                "to extract facts."
+            ),
+        )
+    raise AppError(
+        status_code=503,
+        code="llm_provider_unsupported",
+        message="LLM_PROVIDER must be 'openai' or 'openrouter'.",
+    )
