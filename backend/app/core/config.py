@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     mongodb_db_name: str = "fact_o_check"
     cors_origins: str = "http://localhost:5173"
     max_upload_size_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4o-mini"
+    llm_api_key: SecretStr = SecretStr("")
+    llm_timeout_seconds: float = Field(default=45, gt=0, le=120)
+    extraction_window_chars: int = Field(default=12000, ge=500, le=50000)
+    extraction_window_chunks: int = Field(default=20, ge=1, le=100)
+    extraction_max_windows: int = Field(default=30, ge=1, le=100)
+    extraction_max_output_tokens: int = Field(default=4000, ge=256, le=16000)
 
     @field_validator("app_name", "mongodb_db_name")
     @classmethod

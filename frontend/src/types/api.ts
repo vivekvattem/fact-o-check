@@ -54,3 +54,51 @@ export interface EvidencePage {
   limit: number;
   page: number | null;
 }
+
+export interface FactRecord {
+  id: string;
+  document_id: string;
+  evidence_chunk_ids: string[];
+  subject: string;
+  predicate: string;
+  raw_value: unknown;
+  normalized_value: unknown | null;
+  value_type: string | null;
+  raw_unit: string | null;
+  normalized_unit: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  as_of_date: string | null;
+  geography: string | null;
+  scope: string | null;
+  qualifiers: Record<string, unknown>;
+  extraction_confidence: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  source_document: { id: string; original_filename: string } | null;
+  page_numbers: number[];
+  evidence: EvidenceChunk[];
+}
+
+export interface FactPage {
+  items: FactRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface ExtractionSummary {
+  document_id: string;
+  status: "completed" | "partial" | "failed";
+  windows_total: number;
+  windows_processed: number;
+  windows_failed: number;
+  windows_skipped: number;
+  facts_produced: number;
+  facts_created: number;
+  facts_deduplicated: number;
+  candidates_rejected: number;
+  duration_seconds: number;
+  failures: { window: number; code: string }[];
+}

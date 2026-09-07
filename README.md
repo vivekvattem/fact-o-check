@@ -6,7 +6,7 @@ Fact-O-Check is an evidence-grounded fact knowledge layer for PDFs. It is design
 
 > Facts, not text chunks, are the primary unit of knowledge.
 
-This repository contains the Phase 1 application: PDFs can be uploaded, parsed into page-level evidence blocks, and inspected through the API and frontend. Fact extraction, normalization, and relationship reasoning are intentionally not implemented yet.
+This repository contains the Phase 2 application: PDFs can be uploaded, parsed into evidence blocks, and explicitly converted into structured facts with inspectable provenance. Normalization and relationship reasoning are intentionally not implemented yet.
 
 ## Why this architecture
 
@@ -30,7 +30,7 @@ MongoDB
 
 The backend uses a FastAPI lifespan to initialize and close a MongoDB/Beanie connection. Document models are registered in one place to prevent import cycles. The frontend is a strict TypeScript Vite application with React Router and a small typed API client.
 
-PyMuPDF performs local layout-block extraction during ingestion. Future stages will add fact extraction, normalization, relationship reasoning, and retrieval; those stages are not implemented yet.
+PyMuPDF performs local layout-block extraction during ingestion. A provider-independent fact extraction service consumes stored evidence only when explicitly requested. Future stages will add normalization, relationship reasoning, and retrieval.
 
 ## Ingestion flow
 
@@ -51,7 +51,7 @@ The provenance path is:
 Document → 1-indexed page → ordered EvidenceChunk
 ```
 
-`EvidenceChunk` records reference a document by `PydanticObjectId`; they do not embed the full document. Each chunk retains a PyMuPDF bounding box and ordering metadata so later phases can cite a page, reconstruct approximate reading order, and investigate layout or table extraction failures. Deleting a document cascades to its evidence chunks.
+`EvidenceChunk` records reference a document by `PydanticObjectId`; they do not embed the full document. Each chunk retains a PyMuPDF bounding box and ordering metadata so later phases can cite a page, reconstruct approximate reading order, and investigate layout or table extraction failures. Deleting a document cascades to its facts and evidence chunks.
 
 Layout blocks are kept separate instead of merging a whole PDF into one text field. Whitespace is normalized within lines, line boundaries are preserved, non-text layout blocks are ignored, and isolated one-token fragments are filtered out. Blank pages are valid and simply produce no evidence chunks.
 
@@ -99,7 +99,7 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-cp .env.example .env
+test -e .env || cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
@@ -142,7 +142,56 @@ npm run build
 
 ## Current phase
 
-Phase 1 complete. The repository supports PDF upload, hash-based deduplication, lifecycle states, PyMuPDF layout extraction, evidence persistence and inspection, list/detail/delete APIs, and a functional document UI. The Overview document count now uses live API data.
+Phase 2 implemented. Phase 1 ingestion remains intact. Document Detail offers explicit fact extraction with progress, configuration errors, and complete/partial/failed summaries. Facts supports paginated browsing, exact filters, and detail views with source documents, page numbers, and original evidence text. Upload never triggers an LLM call.
+
+## Fact extraction
+
+> Fact extraction is probabilistic; evidence provenance is deterministic.
+
+`FactExtractor` is an asynchronous protocol accepting bounded `EvidenceContext` windows and returning untrusted structured candidates. The workflow handles document eligibility, windowing, schema/provenance validation, deduplication, and persistence independently of the provider. Tests inject `FakeFactExtractor` and mock HTTP transport; no paid calls are required.
+
+The first adapter uses OpenAI Chat Completions with a strict JSON Schema response format, based on the [official Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs). Qualifiers travel as key/value text pairs because strict schemas disallow arbitrary object keys; the adapter converts them into the existing fact qualifiers dictionary. Refusals, truncation, malformed envelopes, HTTP failures, and timeouts produce safe error codes without returning provider bodies or logging API keys.
+
+### Configuration
+
+Add these values to the ignored `backend/.env` (start the backend from `backend/`):
+
+```dotenv
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+LLM_API_KEY=
+LLM_TIMEOUT_SECONDS=45
+EXTRACTION_WINDOW_CHARS=12000
+EXTRACTION_WINDOW_CHUNKS=20
+EXTRACTION_MAX_WINDOWS=30
+EXTRACTION_MAX_OUTPUT_TOKENS=4000
+```
+
+Set a real key locally to enable extraction. An empty key does not prevent startup; extraction returns HTTP 503 `llm_not_configured`. Changing providers requires another protocol adapter and factory registration. The chosen model must support strict structured output. Evidence in each requested window is sent to the configured LLM provider; original PDFs are not sent. API storage is disabled with `store: false`.
+
+### Fact schema and validation
+
+The existing `Fact` model retains document ID, evidence IDs, subject, predicate, raw/normalized value and unit, value type, period start/end, as-of date, geography, scope, qualifiers, confidence, metadata, and timestamps. Phase 2 candidates support NUMBER, PERCENTAGE, CURRENCY, DATE, BOOLEAN, STRING, ENTITY, and QUANTITY. All raw values, even numbers and booleans, are strings copied verbatim from evidence; normalized fields remain null.
+
+The prompt requests meaningful supported claims, explicit context, lower confidence for ambiguity, and no invented information or mathematical normalization. Ambiguous dates remain original labels in qualifiers rather than invented calendar dates. The workflow validates each candidate independently and requires every reference to occur in that exact window from the same document. The raw value must occur verbatim in a cited text fragment. Insert/save/replace hooks also reject missing, nonexistent, or foreign-document evidence. These checks establish provenance, not the semantic truth of the model's interpretation. Internal prompts and reasoning are not returned in fact APIs.
+
+### Windowing and cost
+
+Chunks are ordered by page, block index, then ID and greedily packed with adjacent content, including page boundaries, up to the configured text-character and chunk limits. There is no overlap or per-block call requirement. Oversized chunks are split into bounded fragments preserving the original chunk ID, page, and character offset; no text is silently truncated. Identical windows are removed within a run. Bounds apply to evidence text; IDs, JSON escaping, schema, and instructions add overhead, and character counts are not exact token counts.
+
+Calls are sequential with no automatic retries. The default cap is 30 windows, 4,000 output tokens per call, 45 seconds per call, and a 180-second overall LLM budget per request. The summary reports skipped windows if budget/caps are reached; increase window or count limits for large documents, subject to the request budget. Explicit re-extraction calls the provider again and incurs usage; there is no persistent window cache or resumable queue yet. Logs report processed/failed windows, accepted/created facts, and duration without evidence text or credentials.
+
+### Deduplication and failure behavior
+
+Deduplication is within one document only. It compares exact subject, predicate, raw value, value type, raw unit, dates/period, geography, scope, and qualifiers, and requires overlapping evidence IDs. Different dates, scope, qualifiers, or disjoint evidence remain distinct. No semantic canonicalization or cross-document matching occurs.
+
+Re-extraction conservatively merges: identical supported facts retain their IDs and confidence; distinct candidates are added. Existing facts are never erased by an empty result or failed window. Results from successful windows persist even if others fail. This preserves prior output but may retain stale or differently phrased interpretations; re-extraction is not replacement. A five-minute MongoDB lease excludes concurrent extraction/deletion across API workers and expires after a crash. Database failures use the existing 503 handler; prior successful writes remain available.
+
+### APIs
+
+- `POST /api/documents/{document_id}/extract-facts`: requires an existing PROCESSED document; returns status, windows processed/failed/skipped, facts produced/created/deduplicated, rejected candidates, safe failure codes, and duration. HTTP 200 summaries can be `completed`, `partial`, or `failed`; clients must inspect status. Missing documents return 404, ineligible/busy documents 409, missing LLM configuration 503.
+- `GET /api/facts`: paginated `{items,total,offset,limit}` with optional exact `document_id`, `subject`, `predicate`, and `value_type` filters; default limit 50, maximum 100.
+- `GET /api/facts/{fact_id}`: structured fact fields, source document, page numbers, evidence text, and confidence. Unknown facts return 404; invalid IDs/filters return 422.
 
 ### Current limitations
 
@@ -150,12 +199,16 @@ Phase 1 complete. The repository supports PDF upload, hash-based deduplication, 
 - Original PDF files are not retained after in-memory processing.
 - PyMuPDF block order is approximate for complex multi-column layouts and tables.
 - Upload processing runs within the request lifecycle; a durable background job queue is deferred.
-- Fact extraction, embeddings, normalization, and relationship reasoning remain out of scope for Phase 1.
+- Extraction depends on source layout and model interpretation; verbatim values and valid citations do not prove semantic correctness. Confidence is self-reported, not calibrated.
+- Nonoverlapping window boundaries can split context. Large documents can hit caps, and skipped windows are not automatically resumed.
+- Strict verbatim-value validation may reject otherwise useful paraphrases or values spanning fragments.
+- No normalization, conversion, embeddings, vector/graph database, cross-document reasoning, RAG/chat, or deployment is implemented.
+- Tests use MongoDB mocks and fake providers; real provider/account compatibility requires an optional live smoke test with a configured key.
 
 ## Roadmap
 
 - Phase 1 — PDF ingestion and evidence (complete)
-- Phase 2 — Fact extraction
+- Phase 2 — Fact extraction (implemented)
 - Phase 3 — Normalization
 - Phase 4 — Relationship reasoning
 - Phase 5 — Required-case validation

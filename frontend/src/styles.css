@@ -1034,3 +1034,13 @@ th {
     transition-duration: 0.01ms !important;
   }
 }
+/* Phase 2 facts reuse the document panels and evidence cards. */
+.extraction-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 20px 0; }
+.extraction-controls .message { flex-basis: 100%; }
+.fact-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 20px; }
+.fact-filters label { display: grid; gap: 6px; font-size: 13px; }
+.fact-filters input, .fact-filters select { padding: 9px; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; background: var(--surface); color: var(--ink); }
+.fact-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.fact-fields > div { padding: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.fact-fields dt { text-transform: capitalize; font-size: 13px; color: var(--muted); }
+.fact-fields dd { margin: 6px 0 0; white-space: pre-wrap; }

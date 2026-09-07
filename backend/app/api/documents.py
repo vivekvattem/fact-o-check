@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, statu
 
 from app.core.config import Settings, get_settings
 from app.schemas.documents import DocumentResponse, DocumentUploadResponse, EvidencePageResponse
+from app.schemas.facts import ExtractionSummary
 from app.services.document_ingestion import ingest_pdf
 from app.services.documents import (
     delete_document,
@@ -13,8 +14,17 @@ from app.services.documents import (
     list_evidence,
     serialize_document,
 )
+from app.services.facts import extract_document_facts
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+@router.post("/{document_id}/extract-facts", response_model=ExtractionSummary)
+async def extract_facts(
+    document_id: PydanticObjectId,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ExtractionSummary:
+    return await extract_document_facts(document_id, settings)
 
 
 @router.post(
@@ -72,4 +82,3 @@ async def get_document_evidence(
         offset=offset,
         limit=limit,
     )
-

@@ -2,11 +2,12 @@ from datetime import date, datetime
 from typing import Any, ClassVar
 
 from beanie import Document as BeanieDocument
-from beanie import PydanticObjectId
+from beanie import Insert, PydanticObjectId, Replace, Save, before_event
 from pydantic import Field, model_validator
 from pymongo import ASCENDING, IndexModel
 
 from app.models.common import utc_now
+from app.models.evidence_chunk import EvidenceChunk
 
 
 class Fact(BeanieDocument):
@@ -40,6 +41,17 @@ class Fact(BeanieDocument):
         if self.period_start and self.period_end and self.period_end < self.period_start:
             raise ValueError("period_end must be on or after period_start")
         return self
+
+    @before_event(Insert, Replace, Save)
+    async def require_evidence(self) -> None:
+        refs = set(self.evidence_chunk_ids)
+        if not refs or await EvidenceChunk.find(
+            {
+                "_id": {"$in": list(refs)},
+                "document_id": self.document_id,
+            }
+        ).count() != len(refs):
+            raise ValueError("Facts require valid evidence chunks from their source document")
 
     class Settings:
         name = "facts"

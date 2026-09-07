@@ -59,7 +59,11 @@ async def list_evidence(
 
 
 async def delete_document(document_id: PydanticObjectId) -> None:
-    document = await get_document_or_404(document_id)
-    await EvidenceChunk.find(EvidenceChunk.document_id == document_id).delete()
-    await document.delete()
+    from app.models.fact import Fact
+    from app.services.facts import document_fact_lease
 
+    document = await get_document_or_404(document_id)
+    async with document_fact_lease(document_id):
+        await Fact.find(Fact.document_id == document_id).delete()
+        await EvidenceChunk.find(EvidenceChunk.document_id == document_id).delete()
+        await document.delete()

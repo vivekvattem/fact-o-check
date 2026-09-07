@@ -5,6 +5,9 @@ import type {
   EvidencePage,
   HealthResponse,
   ReadyResponse,
+  ExtractionSummary,
+  FactPage,
+  FactRecord,
 } from "../types/api";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -48,7 +51,15 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 8_000): 
 export const api = {
   health: () => request<HealthResponse>("/health"),
   ready: () => request<ReadyResponse>("/ready"),
+  facts: {
+    list: (options: Record<string, string> = {}) =>
+      request<FactPage>(`/api/facts?${new URLSearchParams(options).toString()}`),
+    get: (factId: string) => request<FactRecord>(`/api/facts/${factId}`),
+  },
   documents: {
+    extractFacts: (documentId: string) => request<ExtractionSummary>(
+      `/api/documents/${documentId}/extract-facts`, { method: "POST" }, 200_000,
+    ),
     list: () => request<DocumentRecord[]>("/api/documents"),
     get: (documentId: string) => request<DocumentRecord>(`/api/documents/${documentId}`),
     upload: (file: File) => {

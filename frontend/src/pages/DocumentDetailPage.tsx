@@ -11,6 +11,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { DocumentRecord, EvidencePage } from "../types/api";
+import { ExtractFactsButton } from "../components/ExtractFactsButton";
 
 const PAGE_SIZE = 20;
 
@@ -110,6 +111,8 @@ export function DocumentDetailPage() {
           {document.status}
         </span>
       </header>
+
+      <ExtractFactsButton key={documentId} documentId={documentId} status={document.status} />
 
       {document.error_message && (
         <div className="message message--error" role="alert">
@@ -215,4 +218,3 @@ function Metadata({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
