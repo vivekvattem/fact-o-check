@@ -57,8 +57,8 @@ export function AppLayout() {
         </nav>
 
         <div className="sidebar__footer">
-          <span className="phase-pill">Phase 3</span>
-          <p>Evidence to normalized facts</p>
+          <span className="phase-pill">Phase 4</span>
+          <p>Cross-document fact reasoning</p>
         </div>
       </aside>
 

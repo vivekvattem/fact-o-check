@@ -8,6 +8,9 @@ import type {
   ExtractionSummary,
   FactPage,
   FactRecord,
+  RelationComparisonSummary,
+  RelationPage,
+  RelationRecord,
 } from "../types/api";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -58,9 +61,17 @@ export const api = {
     normalize: (factId: string) =>
       request<FactRecord>(`/api/facts/${factId}/normalize`, { method: "POST" }),
   },
+  relations: {
+    list: (options: Record<string, string> = {}) =>
+      request<RelationPage>(`/api/relations?${new URLSearchParams(options).toString()}`),
+    get: (relationId: string) => request<RelationRecord>(`/api/relations/${relationId}`),
+  },
   documents: {
     extractFacts: (documentId: string) => request<ExtractionSummary>(
       `/api/documents/${documentId}/extract-facts`, { method: "POST" }, 200_000,
+    ),
+    compareFacts: (documentId: string) => request<RelationComparisonSummary>(
+      `/api/documents/${documentId}/compare-facts`, { method: "POST" }, 200_000,
     ),
     list: () => request<DocumentRecord[]>("/api/documents"),
     get: (documentId: string) => request<DocumentRecord>(`/api/documents/${documentId}`),

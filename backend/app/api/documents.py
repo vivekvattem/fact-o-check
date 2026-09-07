@@ -7,6 +7,7 @@ from app.core.config import Settings, get_settings
 from app.normalization.service import normalize_document_facts
 from app.schemas.documents import DocumentResponse, DocumentUploadResponse, EvidencePageResponse
 from app.schemas.facts import ExtractionSummary, NormalizationSummary
+from app.schemas.relations import RelationComparisonSummary
 from app.services.document_ingestion import ingest_pdf
 from app.services.documents import (
     delete_document,
@@ -16,8 +17,17 @@ from app.services.documents import (
     serialize_document,
 )
 from app.services.facts import extract_document_facts
+from app.services.relations import compare_document_facts
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+@router.post("/{document_id}/compare-facts", response_model=RelationComparisonSummary)
+async def compare_facts(
+    document_id: PydanticObjectId,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> RelationComparisonSummary:
+    return await compare_document_facts(document_id, settings)
 
 
 @router.post("/{document_id}/extract-facts", response_model=ExtractionSummary)

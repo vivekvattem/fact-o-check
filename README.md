@@ -6,7 +6,7 @@ Fact-O-Check is an evidence-grounded fact knowledge layer for PDFs. It is design
 
 > Facts, not text chunks, are the primary unit of knowledge.
 
-This repository contains the Phase 3 application: PDFs can be uploaded, parsed into evidence blocks, explicitly converted into structured facts with inspectable provenance, and deterministically normalized. Cross-document matching and relationship reasoning are intentionally not implemented yet.
+This repository contains the Phase 4 application: PDFs can be uploaded, parsed into evidence blocks, explicitly converted into structured facts with inspectable provenance, deterministically normalized, and compared across documents with explainable relationship classifications.
 
 ## Why this architecture
 
@@ -30,7 +30,7 @@ MongoDB
 
 The backend uses a FastAPI lifespan to initialize and close a MongoDB/Beanie connection. Document models are registered in one place to prevent import cycles. The frontend is a strict TypeScript Vite application with React Router and a small typed API client.
 
-PyMuPDF performs local layout-block extraction during ingestion. A provider-independent fact extraction service consumes stored evidence only when explicitly requested. A separate deterministic service canonicalizes supported values and context without making LLM calls. Future stages will add relationship reasoning and retrieval.
+PyMuPDF performs local layout-block extraction during ingestion. A provider-independent fact extraction service consumes stored evidence only when explicitly requested. A separate deterministic service canonicalizes supported values and context without making LLM calls. Phase 4 adds incremental candidate matching and deterministic-first relationship reasoning, with the existing provider abstraction reserved for ambiguous semantic comparisons.
 
 ## Ingestion flow
 
@@ -142,7 +142,7 @@ npm run build
 
 ## Current phase
 
-Phase 3 implemented. Phase 1 ingestion and Phase 2 extraction remain intact. Facts can be normalized per document or individually, and Fact Detail shows raw and canonical representations with applied rules and warnings. Upload never triggers extraction or normalization.
+Phase 4 implemented. Ingestion, extraction, and normalization remain explicit operations. Normalized facts can be compared incrementally across documents, and the Relationships UI exposes classifications, source evidence, contextual checks, and safe reasoning metadata. Upload never triggers extraction, normalization, or comparison.
 
 ## Fact extraction
 
@@ -193,7 +193,7 @@ Calls are sequential with no automatic retries. The default cap is 30 windows, 4
 
 ### Deduplication and failure behavior
 
-Deduplication is within one document only. It compares exact subject, predicate, raw value, value type, raw unit, dates/period, geography, scope, and qualifiers, and requires overlapping evidence IDs. Different dates, scope, qualifiers, or disjoint evidence remain distinct. No semantic canonicalization or cross-document matching occurs.
+Extraction deduplication is within one document only. It compares exact subject, predicate, raw value, value type, raw unit, dates/period, geography, scope, and qualifiers, and requires overlapping evidence IDs. Different dates, scope, qualifiers, or disjoint evidence remain distinct. Cross-document matching is a separate explicit Phase 4 workflow over normalized facts.
 
 Re-extraction conservatively merges: identical supported facts retain their IDs and confidence; distinct candidates are added. Existing facts are never erased by an empty result or failed window. Results from successful windows persist even if others fail. This preserves prior output but may retain stale or differently phrased interpretations; re-extraction is not replacement. A five-minute MongoDB lease excludes concurrent extraction/deletion across API workers and expires after a crash. Database failures use the existing 503 handler; prior successful writes remain available.
 
@@ -229,6 +229,36 @@ Entity canonicalization folds case, whitespace, and surrounding punctuation and 
 - `POST /api/documents/{document_id}/normalize-facts` normalizes every persisted fact in the document and reports total facts, changed facts, normalized values, normalized temporal contexts, and facts with warnings.
 - `POST /api/facts/{fact_id}/normalize` normalizes one fact and returns its full provenance-rich representation.
 
+## Cross-document relationship reasoning
+
+> Deterministic checks decide clear numerical relationships; LLM reasoning is reserved for ambiguous semantic context.
+
+The comparison pipeline is staged: candidate generation, comparability checks, deterministic value/context reasoning, optional semantic fallback, and persistence. Candidate generation starts with facts from the selected document and uses canonical subject plus compatible value types to query other documents. It never compares a fact with itself. Canonical pair ordering and a unique MongoDB index prevent reversed and repeated relations. Comparing a newly added document therefore extends the relation set without rebuilding old pairs.
+
+Relations use `CORROBORATES`, `CONTRADICTS`, `RECONCILABLE`, `UNRELATED`, or `NEEDS_REVIEW`. Clear canonical equality corroborates. Material differences contradict only when subject, predicate, type, unit, and explicit context are comparable. Explicit period, scope, geography, or estimate/forecast/actual differences can make an apparent mismatch reconcilable. Missing normalization or one-sided context produces `NEEDS_REVIEW` rather than a forced conclusion.
+
+### Context and tolerance policy
+
+Context comparison returns structured temporal, geography, scope, qualifier, status, difference, and missing-dimension fields. Same periods and as-of dates are distinguished from different or one-sided temporal context. Geography and scope use exact canonical text comparison. Estimate, forecast, and actual markers are read only from explicit scope or qualifiers; arbitrary qualifier differences remain ambiguous for semantic review.
+
+Tolerance is typed rather than universal:
+
+- Currency requires the same canonical currency and allows a 0.1% relative display-rounding difference, expanded to 0.5% only with an explicit approximation marker.
+- Percentages use an absolute tolerance of 0.1 percentage points.
+- Counts are exact unless an approximation marker is present, when a 1% relative tolerance applies.
+- Quantities require the same normalized unit and use a 0.1% relative tolerance.
+- Dates and booleans are exact; strings/entities use canonical equality, with a small explicit set of domain-neutral textual opposites, before semantic fallback.
+
+Each persisted relation records the tolerance, absolute and relative differences, unit equivalence, rounding indicators, structured context compatibility, whether semantic fallback ran, and safe warnings. It never stores provider prompts or private chain-of-thought.
+
+### Semantic fallback and relation APIs
+
+Only ambiguous predicate wording, textual meaning, or qualifier context can reach the provider-independent semantic reasoner. It sends the two structured facts, relevant evidence excerpts, allowed labels, and deterministic checks through the configured OpenAI-compatible OpenAI or OpenRouter endpoint. Strict structured output is validated with Pydantic. Provider failure or invalid output becomes `NEEDS_REVIEW`; semantic output is never allowed to override a clear deterministic numerical decision.
+
+- `POST /api/documents/{document_id}/compare-facts` incrementally compares a document with other documents, skips existing pairs, persists new relations, and returns label counts.
+- `GET /api/relations` returns paginated relations and supports `relation_type`, `document_id`, `subject`, and `min_confidence` filters.
+- `GET /api/relations/{relation_id}` returns both facts with raw/canonical values, source documents, page numbers, evidence text, context, explanation, and safe reasoning details.
+
 ### Current limitations
 
 - OCR is not implemented yet, so image-only pages may produce no textual evidence.
@@ -238,7 +268,9 @@ Entity canonicalization folds case, whitespace, and surrounding punctuation and 
 - Extraction depends on source layout and model interpretation; verbatim values and valid citations do not prove semantic correctness. Confidence is self-reported, not calibrated.
 - Nonoverlapping window boundaries can split context. Large documents can hit caps, and skipped windows are not automatically resumed.
 - Strict verbatim-value validation may reject otherwise useful paraphrases or values spanning fragments.
-- No FX conversion, semantic entity resolution, semantic predicate merging, embeddings, vector/graph database, cross-document reasoning, RAG/chat, or deployment is implemented.
+- No FX conversion, broad semantic entity resolution, embeddings, vector/graph database, RAG/chat, or deployment is implemented.
+- Candidate generation is conservative and exact-subject-first; semantically equivalent entities that normalize differently will not become candidates.
+- Display tolerances are general typed defaults, not domain-specific accounting materiality thresholds. Sparse or ambiguous context intentionally produces review items.
 - Tests use MongoDB mocks and fake providers; real provider/account compatibility requires an optional live smoke test with a configured key.
 
 ## Roadmap
@@ -246,7 +278,7 @@ Entity canonicalization folds case, whitespace, and surrounding punctuation and 
 - Phase 1 — PDF ingestion and evidence (complete)
 - Phase 2 — Fact extraction (implemented)
 - Phase 3 — Deterministic normalization (implemented)
-- Phase 4 — Relationship reasoning
+- Phase 4 — Relationship reasoning (implemented)
 - Phase 5 — Required-case validation
 - Phase 6 — UI polish and generalization
 - Phase 7 — Deployment and demo

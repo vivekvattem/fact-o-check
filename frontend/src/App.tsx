@@ -7,6 +7,7 @@ import { FactsPage } from "./pages/FactsPage";
 import { FactDetailPage } from "./pages/FactDetailPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RelationshipsPage } from "./pages/RelationshipsPage";
+import { RelationDetailPage } from "./pages/RelationDetailPage";
 
 const router = createBrowserRouter([
   {
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
       { path: "facts", element: <FactsPage /> },
       { path: "facts/:factId", element: <FactDetailPage /> },
       { path: "relationships", element: <RelationshipsPage /> },
+      { path: "relationships/:relationId", element: <RelationDetailPage /> },
     ],
   },
 ]);

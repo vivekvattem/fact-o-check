@@ -62,4 +62,13 @@ class Fact(BeanieDocument):
             IndexModel([("subject", ASCENDING)]),
             IndexModel([("predicate", ASCENDING)]),
             IndexModel([("subject", ASCENDING), ("predicate", ASCENDING)]),
+            IndexModel([("normalized_subject", ASCENDING)]),
+            IndexModel([("normalized_predicate", ASCENDING)]),
+            IndexModel(
+                [
+                    ("document_id", ASCENDING),
+                    ("normalized_subject", ASCENDING),
+                    ("value_type", ASCENDING),
+                ]
+            ),
         ]

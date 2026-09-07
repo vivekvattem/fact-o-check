@@ -113,3 +113,42 @@ export interface NormalizationSummary {
   temporal_contexts_normalized: number;
   facts_with_warnings: number;
 }
+
+export type RelationType =
+  | "CORROBORATES"
+  | "CONTRADICTS"
+  | "RECONCILABLE"
+  | "UNRELATED"
+  | "NEEDS_REVIEW";
+
+export interface RelationRecord {
+  id: string;
+  fact_a_id: string;
+  fact_b_id: string;
+  relation_type: RelationType;
+  confidence: number | null;
+  explanation: string | null;
+  reasoning_details: Record<string, unknown>;
+  created_at: string;
+  fact_a: FactRecord;
+  fact_b: FactRecord;
+}
+
+export interface RelationPage {
+  items: RelationRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface RelationComparisonSummary {
+  document_id: string;
+  pairs_considered: number;
+  relations_created: number;
+  duplicates_skipped: number;
+  corroborates: number;
+  contradicts: number;
+  reconcilable: number;
+  needs_review: number;
+  unrelated: number;
+}

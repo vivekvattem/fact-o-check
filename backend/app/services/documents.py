@@ -60,10 +60,21 @@ async def list_evidence(
 
 async def delete_document(document_id: PydanticObjectId) -> None:
     from app.models.fact import Fact
+    from app.models.fact_relation import FactRelation
     from app.services.facts import document_fact_lease
 
     document = await get_document_or_404(document_id)
     async with document_fact_lease(document_id):
+        fact_ids = [fact.id for fact in await Fact.find(Fact.document_id == document_id).to_list()]
+        if fact_ids:
+            await FactRelation.find(
+                {
+                    "$or": [
+                        {"fact_a_id": {"$in": fact_ids}},
+                        {"fact_b_id": {"$in": fact_ids}},
+                    ]
+                }
+            ).delete()
         await Fact.find(Fact.document_id == document_id).delete()
         await EvidenceChunk.find(EvidenceChunk.document_id == document_id).delete()
         await document.delete()

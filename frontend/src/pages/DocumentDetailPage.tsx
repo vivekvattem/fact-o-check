@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { CompareFactsButton } from "../components/CompareFactsButton";
 import { ExtractFactsButton } from "../components/ExtractFactsButton";
 import { LoadingState } from "../components/LoadingState";
 import type { DocumentRecord, EvidencePage } from "../types/api";
@@ -136,6 +137,15 @@ export function DocumentDetailPage() {
           <p>Create structured facts from this document’s stored evidence.</p>
         </div>
         <ExtractFactsButton key={documentId} documentId={documentId} status={document.status} />
+      </section>
+
+      <section className="detail-section action-panel panel" aria-labelledby="comparison-heading">
+        <div>
+          <span className="eyebrow">Cross-document reasoning</span>
+          <h2 id="comparison-heading">Fact comparison</h2>
+          <p>Compare this document’s normalized facts with likely matches from other sources.</p>
+        </div>
+        <CompareFactsButton key={`compare-${documentId}`} documentId={documentId} />
       </section>
 
       <section className="evidence-section detail-section" aria-labelledby="evidence-heading">

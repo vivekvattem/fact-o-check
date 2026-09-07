@@ -1251,11 +1251,74 @@ select { font: inherit; }
 /* Relationships */
 .tabs { border-bottom: 1px solid var(--line); gap: 6px; margin: 0 0 18px; padding: 0 2px 10px; }
 .tab { min-height: 37px; }
+.relationship-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.relationship-metric { display: flex; align-items: center; justify-content: space-between; padding: 17px 19px; }
+.relationship-metric span { color: var(--muted); font-size: 12px; font-weight: 600; }
+.relationship-metric strong { font: 700 23px "Manrope", sans-serif; }
+.relationship-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.relationship-toolbar .tabs { min-width: 0; flex: 1; overflow-x: auto; }
+.relationship-panel { overflow: hidden; }
+.relationship-list { display: grid; }
+.relationship-card { border-bottom: 1px solid var(--line); padding: 22px; }
+.relationship-card:last-child { border-bottom: 0; }
+.relationship-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.relationship-card__heading h2 { margin: 3px 0 0; font: 600 17px "Manrope", sans-serif; }
+.relation-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+}
+.relation-badge--corroborates { background: #e5f0e9; color: #347050; }
+.relation-badge--contradicts { background: #f5e8e5; color: #935047; }
+.relation-badge--reconcilable { background: #e7eef4; color: #4a687b; }
+.relation-badge--needs_review { background: #f4ecdb; color: #80652f; }
+.relation-badge--unrelated { background: #ecefed; color: #68716b; }
+.relationship-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+}
+.relationship-values > div { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 9px; padding: 13px 15px; }
+.relationship-values span, .relationship-values small { color: var(--muted); font-size: 10px; }
+.relationship-values strong { overflow-wrap: anywhere; font-size: 14px; }
+.relationship-versus { font-weight: 700; text-transform: uppercase; }
+.relationship-explanation { margin: 15px 0 0; color: #4f5b53; font-size: 13px; line-height: 1.55; }
+.relationship-card footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 11px; }
+.relationship-card footer a { font-weight: 650; }
+.relation-detail__header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.relation-detail__header h1 { margin: 0; font: 700 clamp(26px, 3vw, 36px) "Manrope", sans-serif; }
+.relation-detail__header p { margin: 6px 0 0; color: var(--muted); }
+.relation-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.relation-fact { margin-top: 0; }
+.relation-fact h2 { margin: 4px 0 0; font: 650 19px "Manrope", sans-serif; }
+.relation-fact__predicate { margin: 4px 0 15px; color: var(--muted); font-size: 13px; }
+.relation-evidence { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 15px; }
+.relation-evidence h3 { margin: 0 0 9px; font: 600 13px "Manrope", sans-serif; }
+.relation-evidence blockquote { margin: 8px 0 0; border-left: 2px solid #b9cabe; padding: 3px 0 3px 12px; color: #4f5b53; font-size: 12px; line-height: 1.5; }
+.relation-evidence blockquote span { display: block; margin-bottom: 3px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.relation-decision { margin-top: 16px; }
+.relation-decision > p { color: #3f4b43; line-height: 1.6; }
+.reasoning-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 18px 0 0; gap: 10px 18px; }
+.reasoning-grid > div { border-top: 1px solid var(--line); padding-top: 10px; }
+.reasoning-grid dt { color: var(--muted); font-size: 10px; font-weight: 650; text-transform: capitalize; }
+.reasoning-grid dd { margin: 5px 0 0; overflow-wrap: anywhere; color: #3f4b43; font-size: 11px; }
 
 @media (max-width: 900px) {
   .action-panel { grid-template-columns: 1fr; }
   .extraction-controls { justify-content: flex-start; }
   .context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .relationship-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 680px) {
@@ -1291,12 +1354,19 @@ select { font: inherit; }
   .source-cell a { max-width: 50vw; }
   .context-list { max-width: none; }
   .table-pagination { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .relationship-toolbar { align-items: stretch; flex-direction: column; }
+  .relationship-toolbar .tabs { width: 100%; }
+  .relationship-values, .relation-facts, .reasoning-grid { grid-template-columns: 1fr; }
+  .relationship-versus { justify-self: center; }
+  .relationship-card__heading, .relation-detail__header { align-items: flex-start; flex-direction: column; }
+  .relationship-card footer { align-items: flex-start; flex-direction: column; }
 }
 
 @media (max-width: 420px) {
   .fact-filters { grid-template-columns: 1fr; }
   .fact-filters label:first-child { grid-column: auto; }
   .fact-filters .button { width: 100%; }
+  .relationship-summary { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
