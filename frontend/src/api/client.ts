@@ -55,6 +55,8 @@ export const api = {
     list: (options: Record<string, string> = {}) =>
       request<FactPage>(`/api/facts?${new URLSearchParams(options).toString()}`),
     get: (factId: string) => request<FactRecord>(`/api/facts/${factId}`),
+    normalize: (factId: string) =>
+      request<FactRecord>(`/api/facts/${factId}/normalize`, { method: "POST" }),
   },
   documents: {
     extractFacts: (documentId: string) => request<ExtractionSummary>(

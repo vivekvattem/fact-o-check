@@ -4,8 +4,9 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 
 from app.core.config import Settings, get_settings
+from app.normalization.service import normalize_document_facts
 from app.schemas.documents import DocumentResponse, DocumentUploadResponse, EvidencePageResponse
-from app.schemas.facts import ExtractionSummary
+from app.schemas.facts import ExtractionSummary, NormalizationSummary
 from app.services.document_ingestion import ingest_pdf
 from app.services.documents import (
     delete_document,
@@ -25,6 +26,11 @@ async def extract_facts(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ExtractionSummary:
     return await extract_document_facts(document_id, settings)
+
+
+@router.post("/{document_id}/normalize-facts", response_model=NormalizationSummary)
+async def normalize_facts(document_id: PydanticObjectId) -> NormalizationSummary:
+    return await normalize_document_facts(document_id)
 
 
 @router.post(

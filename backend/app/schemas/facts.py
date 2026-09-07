@@ -54,6 +54,8 @@ class FactResponse(BaseModel):
     evidence_chunk_ids: list[PydanticObjectId]
     subject: str
     predicate: str
+    normalized_subject: str | None
+    normalized_predicate: str | None
     raw_value: Any
     normalized_value: Any | None
     value_type: str | None
@@ -99,3 +101,12 @@ class ExtractionSummary(BaseModel):
     candidates_rejected: int = 0
     duration_seconds: float = 0
     failures: list[WindowFailure] = Field(default_factory=list)
+
+
+class NormalizationSummary(BaseModel):
+    document_id: PydanticObjectId
+    facts_total: int = 0
+    facts_changed: int = 0
+    values_normalized: int = 0
+    temporal_contexts_normalized: int = 0
+    facts_with_warnings: int = 0

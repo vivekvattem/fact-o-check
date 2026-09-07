@@ -61,6 +61,8 @@ export interface FactRecord {
   evidence_chunk_ids: string[];
   subject: string;
   predicate: string;
+  normalized_subject: string | null;
+  normalized_predicate: string | null;
   raw_value: unknown;
   normalized_value: unknown | null;
   value_type: string | null;
@@ -101,4 +103,13 @@ export interface ExtractionSummary {
   candidates_rejected: number;
   duration_seconds: number;
   failures: { window: number; code: string }[];
+}
+
+export interface NormalizationSummary {
+  document_id: string;
+  facts_total: number;
+  facts_changed: number;
+  values_normalized: number;
+  temporal_contexts_normalized: number;
+  facts_with_warnings: number;
 }

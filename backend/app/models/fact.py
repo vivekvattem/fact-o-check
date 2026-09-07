@@ -15,6 +15,8 @@ class Fact(BeanieDocument):
     evidence_chunk_ids: list[PydanticObjectId] = Field(default_factory=list)
     subject: str = Field(min_length=1, max_length=512)
     predicate: str = Field(min_length=1, max_length=512)
+    normalized_subject: str | None = Field(default=None, max_length=512)
+    normalized_predicate: str | None = Field(default=None, max_length=512)
 
     raw_value: Any | None = None
     normalized_value: Any | None = None

@@ -200,7 +200,7 @@ async def serialize_facts(facts: list[Fact]) -> list[FactResponse]:
                 # Expose only application-controlled metadata, never legacy provider payloads.
                 metadata={
                     k: fact.metadata[k]
-                    for k in ("provider", "model", "extraction_version", "window")
+                    for k in ("provider", "model", "extraction_version", "window", "normalization")
                     if k in fact.metadata
                 },
                 source_document=sources.get(fact.document_id),

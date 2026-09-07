@@ -6,7 +6,7 @@ Fact-O-Check is an evidence-grounded fact knowledge layer for PDFs. It is design
 
 > Facts, not text chunks, are the primary unit of knowledge.
 
-This repository contains the Phase 2 application: PDFs can be uploaded, parsed into evidence blocks, and explicitly converted into structured facts with inspectable provenance. Normalization and relationship reasoning are intentionally not implemented yet.
+This repository contains the Phase 3 application: PDFs can be uploaded, parsed into evidence blocks, explicitly converted into structured facts with inspectable provenance, and deterministically normalized. Cross-document matching and relationship reasoning are intentionally not implemented yet.
 
 ## Why this architecture
 
@@ -30,7 +30,7 @@ MongoDB
 
 The backend uses a FastAPI lifespan to initialize and close a MongoDB/Beanie connection. Document models are registered in one place to prevent import cycles. The frontend is a strict TypeScript Vite application with React Router and a small typed API client.
 
-PyMuPDF performs local layout-block extraction during ingestion. A provider-independent fact extraction service consumes stored evidence only when explicitly requested. Future stages will add normalization, relationship reasoning, and retrieval.
+PyMuPDF performs local layout-block extraction during ingestion. A provider-independent fact extraction service consumes stored evidence only when explicitly requested. A separate deterministic service canonicalizes supported values and context without making LLM calls. Future stages will add relationship reasoning and retrieval.
 
 ## Ingestion flow
 
@@ -142,7 +142,7 @@ npm run build
 
 ## Current phase
 
-Phase 2 implemented. Phase 1 ingestion remains intact. Document Detail offers explicit fact extraction with progress, configuration errors, and complete/partial/failed summaries. Facts supports paginated browsing, exact filters, and detail views with source documents, page numbers, and original evidence text. Upload never triggers an LLM call.
+Phase 3 implemented. Phase 1 ingestion and Phase 2 extraction remain intact. Facts can be normalized per document or individually, and Fact Detail shows raw and canonical representations with applied rules and warnings. Upload never triggers extraction or normalization.
 
 ## Fact extraction
 
@@ -203,6 +203,32 @@ Re-extraction conservatively merges: identical supported facts retain their IDs 
 - `GET /api/facts`: paginated `{items,total,offset,limit}` with optional exact `document_id`, `subject`, `predicate`, and `value_type` filters; default limit 50, maximum 100.
 - `GET /api/facts/{fact_id}`: structured fact fields, source document, page numbers, evidence text, and confidence. Unknown facts return 404; invalid IDs/filters return 422.
 
+## Deterministic normalization
+
+> Normalization is deterministic where possible; ambiguous values remain explicit rather than being guessed.
+
+Normalization is implemented as pure parsing modules for numbers, units, dates, entities, and predicates, coordinated by a persistence service. It never calls an LLM and never changes `raw_value`, `raw_unit`, `subject`, or `predicate`. Canonical subjects and predicates use separate fields. Each run replaces only `metadata.normalization`, retaining extraction metadata and recording a version, deterministic rules, and warnings. Re-running with unchanged input is idempotent and does not update the fact timestamp.
+
+### Canonical values and units
+
+- Currency values use base currency units: one INR or one USD. Indian and international scale words are expanded (`thousand`, `lakh`/`lac`, `million`, `crore`, and `billion`). For example, `₹8,142 crore` and `₹81,420 million` both become `81420000000 INR`. No foreign-exchange conversion occurs.
+- Percentages use percentage points: `6.5%`, `6.5 percent`, and `6.50 per cent` become `6.5 PERCENT`, not `0.065`.
+- Plain numbers use `COUNT` unless an explicit unit is supplied. Quantities retain a normalized uppercase unit without unit conversion. Western and Indian comma grouping, decimals, leading minus signs, and enclosing-parentheses negatives are supported.
+- Boolean literals use `BOOLEAN`; directly parseable date facts use ISO `YYYY-MM-DD` with unit `DATE`. Unsupported types, currencies, ranges, approximate values, malformed grouping, or missing quantity units remain null with warnings.
+
+### Temporal context
+
+`year ended <date>` deterministically maps to the inclusive one-year period ending on that date, and `as of <date>` populates `as_of_date`. Existing extracted dates take precedence. `FY24`, `FY2024`, and `FY 2023-24` use an April 1–March 31 Indian fiscal year only when the fact also has India context, such as geography, an India qualifier, or INR value/unit. `Q1` through `Q4` within such an FY narrow that fiscal period to its calendar dates. FY text without supporting India context stays unresolved and records a warning.
+
+### Entity and predicate rules
+
+Entity canonicalization folds case, whitespace, and surrounding punctuation and removes repeated terminal corporate suffixes such as `Limited`, `Ltd.`, `Inc.`, and `Corporation`. Generic references such as `the Company` remain unresolved because they require document-specific context. Predicate normalization performs formatting only: lowercase text and punctuation/whitespace become snake case, so `Revenue from Services` becomes `revenue_from_services`. It does not merge semantic synonyms.
+
+### Normalization APIs
+
+- `POST /api/documents/{document_id}/normalize-facts` normalizes every persisted fact in the document and reports total facts, changed facts, normalized values, normalized temporal contexts, and facts with warnings.
+- `POST /api/facts/{fact_id}/normalize` normalizes one fact and returns its full provenance-rich representation.
+
 ### Current limitations
 
 - OCR is not implemented yet, so image-only pages may produce no textual evidence.
@@ -212,14 +238,14 @@ Re-extraction conservatively merges: identical supported facts retain their IDs 
 - Extraction depends on source layout and model interpretation; verbatim values and valid citations do not prove semantic correctness. Confidence is self-reported, not calibrated.
 - Nonoverlapping window boundaries can split context. Large documents can hit caps, and skipped windows are not automatically resumed.
 - Strict verbatim-value validation may reject otherwise useful paraphrases or values spanning fragments.
-- No normalization, conversion, embeddings, vector/graph database, cross-document reasoning, RAG/chat, or deployment is implemented.
+- No FX conversion, semantic entity resolution, semantic predicate merging, embeddings, vector/graph database, cross-document reasoning, RAG/chat, or deployment is implemented.
 - Tests use MongoDB mocks and fake providers; real provider/account compatibility requires an optional live smoke test with a configured key.
 
 ## Roadmap
 
 - Phase 1 — PDF ingestion and evidence (complete)
 - Phase 2 — Fact extraction (implemented)
-- Phase 3 — Normalization
+- Phase 3 — Deterministic normalization (implemented)
 - Phase 4 — Relationship reasoning
 - Phase 5 — Required-case validation
 - Phase 6 — UI polish and generalization

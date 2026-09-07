@@ -5,10 +5,17 @@ from fastapi import APIRouter, Query
 
 from app.core.exceptions import AppError
 from app.models.fact import Fact
+from app.normalization.service import normalize_fact_by_id
 from app.schemas.facts import FactPageResponse, FactResponse, ValueType
 from app.services.facts import serialize_facts
 
 router = APIRouter(prefix="/facts", tags=["facts"])
+
+
+@router.post("/{fact_id}/normalize", response_model=FactResponse)
+async def normalize_fact(fact_id: PydanticObjectId) -> FactResponse:
+    fact, _ = await normalize_fact_by_id(fact_id)
+    return (await serialize_facts([fact]))[0]
 
 
 @router.get("", response_model=FactPageResponse)
