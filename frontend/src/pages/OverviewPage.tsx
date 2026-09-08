@@ -30,7 +30,7 @@ export function OverviewPage() {
     let active = true;
 
     async function checkConnections() {
-      const healthResult = await Promise.allSettled([
+      const connectionResults = await Promise.allSettled([
         api.health(),
         api.ready(),
         api.documents.list(),
@@ -41,15 +41,16 @@ export function OverviewPage() {
         ),
       ]);
       if (!active) return;
-      setApiStatus(healthResult[0].status === "fulfilled" ? "connected" : "unavailable");
-      setDatabaseStatus(healthResult[1].status === "fulfilled" ? "connected" : "unavailable");
-      if (healthResult[2].status === "fulfilled") {
-        setDocumentCount(healthResult[2].value.length);
-        setRecentDocuments(healthResult[2].value.slice(0, 3));
+      const ready = connectionResults[1].status === "fulfilled";
+      setApiStatus(ready ? "connected" : "unavailable");
+      setDatabaseStatus(ready ? "connected" : "unavailable");
+      if (connectionResults[2].status === "fulfilled") {
+        setDocumentCount(connectionResults[2].value.length);
+        setRecentDocuments(connectionResults[2].value.slice(0, 3));
       }
-      if (healthResult[3].status === "fulfilled") setFactCount(healthResult[3].value.total);
-      if (healthResult[4].status === "fulfilled") setRelationCount(healthResult[4].value.total);
-      setBreakdown(healthResult.slice(5).map(result =>
+      if (connectionResults[3].status === "fulfilled") setFactCount(connectionResults[3].value.total);
+      if (connectionResults[4].status === "fulfilled") setRelationCount(connectionResults[4].value.total);
+      setBreakdown(connectionResults.slice(5).map(result =>
         result.status === "fulfilled" && "total" in result.value ? result.value.total : null));
     }
 
