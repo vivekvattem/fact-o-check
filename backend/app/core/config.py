@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_http_referer: str | None = None
     openrouter_x_title: str | None = "Fact-O-Check"
+    debug_token: SecretStr = SecretStr("")
     llm_timeout_seconds: float = Field(default=45, gt=0, le=120)
     extraction_window_chars: int = Field(default=12000, ge=500, le=50000)
     extraction_window_chunks: int = Field(default=20, ge=1, le=100)

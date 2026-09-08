@@ -81,6 +81,20 @@ def build_windows(chunks: list[EvidenceChunk], settings: Settings) -> list[Windo
 class ExtractorError(Exception):
     """Safe error code only; never provider response bodies or credentials."""
 
+    def __init__(
+        self,
+        code: str,
+        *,
+        http_status: int | None = None,
+        error_type: str | None = None,
+        safe_message: str | None = None,
+    ) -> None:
+        self.code = code
+        self.http_status = http_status
+        self.error_type = error_type
+        self.safe_message = safe_message
+        super().__init__(code)
+
 
 class FactExtractor(Protocol):
     async def extract(self, window: Window) -> list[Any]: ...
@@ -128,7 +142,7 @@ class OpenAICompatibleFactExtractor:
         self.provider_name = provider_name
         self.headers = headers or {}
 
-    def _log_provider_error(self, exc: httpx.HTTPError) -> None:
+    def _provider_error_details(self, exc: httpx.HTTPError) -> tuple[int | None, str, str]:
         status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
         error_type = type(exc).__name__
         error_message = str(exc)
@@ -143,12 +157,22 @@ class OpenAICompatibleFactExtractor:
         if api_key:
             error_message = error_message.replace(api_key, "[REDACTED]")
         error_message = " ".join(error_message.split())[:500]
+        return status_code, error_type, error_message
+
+    def _provider_error(self, code: str, exc: httpx.HTTPError) -> ExtractorError:
+        status_code, error_type, error_message = self._provider_error_details(exc)
         logger.warning(
             "Provider request failed provider=%s status_code=%s error_type=%s error_message=%s",
             self.provider_name,
             status_code,
             error_type,
             error_message,
+        )
+        return ExtractorError(
+            code,
+            http_status=status_code,
+            error_type=error_type,
+            safe_message=error_message,
         )
 
     async def extract(self, window: Window) -> list[Any]:
@@ -191,11 +215,9 @@ class OpenAICompatibleFactExtractor:
                 )
                 response.raise_for_status()
         except httpx.TimeoutException as exc:
-            self._log_provider_error(exc)
-            raise ExtractorError("provider_timeout") from exc
+            raise self._provider_error("provider_timeout", exc) from exc
         except httpx.HTTPError as exc:
-            self._log_provider_error(exc)
-            raise ExtractorError("provider_unavailable") from exc
+            raise self._provider_error("provider_unavailable", exc) from exc
         try:
             choice = response.json()["choices"][0]
             if choice["finish_reason"] != "stop" or choice["message"].get("refusal"):

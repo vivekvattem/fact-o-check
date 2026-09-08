@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.debug import router as debug_router
 from app.api.documents import router as documents_router
 from app.api.facts import router as facts_router
 from app.api.relations import router as relations_router
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(application)
     application.include_router(system_router)
+    application.include_router(debug_router, prefix=settings.api_prefix)
     application.include_router(documents_router, prefix=settings.api_prefix)
     application.include_router(facts_router, prefix=settings.api_prefix)
     application.include_router(relations_router, prefix=settings.api_prefix)

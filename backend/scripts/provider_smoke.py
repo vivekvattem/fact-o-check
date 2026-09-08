@@ -23,7 +23,7 @@ async def main() -> None:
         raise SystemExit(1) from None
     try:
         await extractor.extract(
-            (EvidenceContext("provider-smoke-test", 1, "Fact-O-Check provider smoke test."),)
+            (EvidenceContext("000000000000000000000000", 1, "Fact-O-Check provider smoke test."),)
         )
     except ExtractorError as exc:
         print(f"result={exc}")
