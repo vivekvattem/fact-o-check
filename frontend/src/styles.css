@@ -1262,8 +1262,14 @@ select { font: inherit; }
 .relationship-metric strong { font: 700 23px "Manrope", sans-serif; }
 .relationship-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .relationship-toolbar .tabs { min-width: 0; flex: 1; overflow-x: auto; }
+.relationship-source-filter { display: grid; min-width: 220px; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 650; }
+.relationship-source-filter select { width: 100%; min-height: 37px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); color: var(--ink); padding: 7px 30px 7px 10px; }
 .relationship-panel { overflow: hidden; }
 .relationship-list { display: grid; }
+.relationship-groups { display: grid; gap: 0; }
+.relationship-group + .relationship-group { border-top: 8px solid #f1f3ef; }
+.relationship-group__header { display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--line); background: #fafbf9; padding: 14px 22px; }
+.relationship-group__header h2 { margin: 0; overflow-wrap: anywhere; font: 650 14px "Manrope", sans-serif; }
 .relationship-card { border-bottom: 1px solid var(--line); padding: 22px; }
 .relationship-card:last-child { border-bottom: 0; }
 .relationship-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
@@ -1291,6 +1297,8 @@ select { font: inherit; }
 }
 .relationship-values > div { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 9px; padding: 13px 15px; }
 .relationship-values span, .relationship-values small { color: var(--muted); font-size: 10px; }
+.relationship-values .source-chip { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: 5px; overflow: hidden; border-radius: 999px; background: #eaf0eb; color: #4b6253; padding: 5px 8px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.source-chip svg { flex: 0 0 auto; }
 .relationship-values strong { overflow-wrap: anywhere; font-size: 14px; }
 .relationship-versus { font-weight: 700; text-transform: uppercase; }
 .relationship-explanation { margin: 15px 0 0; color: #4f5b53; font-size: 13px; line-height: 1.55; }
@@ -1356,6 +1364,7 @@ select { font: inherit; }
   .table-pagination { align-items: flex-start; flex-direction: column; gap: 12px; }
   .relationship-toolbar { align-items: stretch; flex-direction: column; }
   .relationship-toolbar .tabs { width: 100%; }
+  .relationship-source-filter { width: 100%; min-width: 0; }
   .relationship-values, .relation-facts, .reasoning-grid { grid-template-columns: 1fr; }
   .relationship-versus { justify-self: center; }
   .relationship-card__heading, .relation-detail__header { align-items: flex-start; flex-direction: column; }

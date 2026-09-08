@@ -652,6 +652,38 @@ async def test_relation_api_filters_and_detail_are_evidence_grounded(client):
     assert missing.status_code == 404
 
 
+async def test_relation_api_filters_same_and_cross_document_sources(client):
+    first, first_chunk, first_fact = await source("annual.pdf", 100)
+    _second, _, second_fact = await source("presentation.pdf", 100)
+    same_document_fact = await persisted_fact(first, first_chunk, 101, predicate="Costs")
+    same_document_relation = await FactRelation(
+        fact_a_id=first_fact.id,
+        fact_b_id=same_document_fact.id,
+        relation_type=FactRelationType.NEEDS_REVIEW,
+    ).insert()
+    cross_document_relation = await FactRelation(
+        fact_a_id=first_fact.id,
+        fact_b_id=second_fact.id,
+        relation_type=FactRelationType.CORROBORATES,
+    ).insert()
+
+    same_document = await client.get(
+        "/api/relations", params={"source_document_id": str(first.id)}
+    )
+    assert same_document.status_code == 200
+    assert same_document.json()["total"] == 1
+    assert same_document.json()["items"][0]["id"] == str(same_document_relation.id)
+
+    cross_document = await client.get("/api/relations", params={"cross_document": True})
+    assert cross_document.status_code == 200
+    assert cross_document.json()["total"] == 1
+    assert cross_document.json()["items"][0]["id"] == str(cross_document_relation.id)
+
+    involved = await client.get("/api/relations", params={"document_id": str(first.id)})
+    assert involved.status_code == 200
+    assert involved.json()["total"] == 2
+
+
 async def test_deleting_document_cascades_relations(client):
     first, _, _ = await source("delete.pdf", 100)
     second, _, _ = await source("keep.pdf", 100)

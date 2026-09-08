@@ -14,6 +14,8 @@ router = APIRouter(prefix="/relations", tags=["relations"])
 async def get_relations(
     relation_type: FactRelationType | None = None,
     document_id: PydanticObjectId | None = None,
+    source_document_id: PydanticObjectId | None = None,
+    cross_document: bool = False,
     subject: Annotated[str | None, Query(max_length=512)] = None,
     min_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -22,6 +24,8 @@ async def get_relations(
     return await list_relations(
         relation_type=relation_type,
         document_id=document_id,
+        source_document_id=source_document_id,
+        cross_document=cross_document,
         subject=subject,
         min_confidence=min_confidence,
         offset=offset,

@@ -749,6 +749,8 @@ async def list_relations(
     *,
     relation_type: FactRelationType | None,
     document_id: PydanticObjectId | None,
+    source_document_id: PydanticObjectId | None,
+    cross_document: bool,
     subject: str | None,
     min_confidence: float | None,
     offset: int,
@@ -774,6 +776,30 @@ async def list_relations(
             {"fact_a_id": {"$in": fact_ids}},
             {"fact_b_id": {"$in": fact_ids}},
         ]
+    if source_document_id is not None:
+        source_fact_ids = [
+            fact.id for fact in await Fact.find(Fact.document_id == source_document_id).to_list()
+        ]
+        filters["fact_a_id"] = {"$in": source_fact_ids}
+        filters["fact_b_id"] = {"$in": source_fact_ids}
+    elif cross_document:
+        relations = await FactRelation.find_all().to_list()
+        relation_fact_ids = {
+            fact_id
+            for relation in relations
+            for fact_id in (relation.fact_a_id, relation.fact_b_id)
+        }
+        facts = await Fact.find({"_id": {"$in": list(relation_fact_ids)}}).to_list()
+        document_by_fact_id = {fact.id: fact.document_id for fact in facts}
+        cross_document_ids = [
+            relation.id
+            for relation in relations
+            if document_by_fact_id.get(relation.fact_a_id)
+            != document_by_fact_id.get(relation.fact_b_id)
+            and relation.fact_a_id in document_by_fact_id
+            and relation.fact_b_id in document_by_fact_id
+        ]
+        filters["_id"] = {"$in": cross_document_ids}
     query = FactRelation.find(filters)
     total = await query.count()
     relations = await query.sort("-created_at", "+_id").skip(offset).limit(limit).to_list()
