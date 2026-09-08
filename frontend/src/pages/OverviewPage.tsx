@@ -1,16 +1,19 @@
 import {
+  ArrowRight,
   Database,
   GitCompareArrows,
   ClipboardCheck,
   Files,
   ScanSearch,
   Server,
+  Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
+import type { DocumentRecord } from "../types/api";
 
 type ConnectionState = "checking" | "connected" | "unavailable";
 
@@ -21,6 +24,7 @@ export function OverviewPage() {
   const [factCount, setFactCount] = useState<number | null>(null);
   const [relationCount, setRelationCount] = useState<number | null>(null);
   const [breakdown, setBreakdown] = useState<(number | null)[]>([null, null, null, null]);
+  const [recentDocuments, setRecentDocuments] = useState<DocumentRecord[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +45,7 @@ export function OverviewPage() {
       setDatabaseStatus(healthResult[1].status === "fulfilled" ? "connected" : "unavailable");
       if (healthResult[2].status === "fulfilled") {
         setDocumentCount(healthResult[2].value.length);
+        setRecentDocuments(healthResult[2].value.slice(0, 3));
       }
       if (healthResult[3].status === "fulfilled") setFactCount(healthResult[3].value.total);
       if (healthResult[4].status === "fulfilled") setRelationCount(healthResult[4].value.total);
@@ -116,6 +121,32 @@ export function OverviewPage() {
             </Link>)}
         </div>
         <p className="muted-copy">Counts reflect saved comparisons. A missing count means the data could not be loaded.</p>
+      </section>
+      <section className="overview-lower-grid" aria-label="Workspace activity and next actions">
+        <article className="overview-recent">
+          <div className="section-heading"><div><span className="eyebrow">Latest sources</span>
+            <h2>Recent documents</h2></div><Link to="/documents">View all</Link></div>
+          {recentDocuments.length ? <div className="recent-document-list">
+            {recentDocuments.map(document => <Link to={`/documents/${document.id}`} key={document.id}>
+              <span className="document-icon"><Files size={16} /></span>
+              <span><strong>{document.original_filename}</strong>
+                <small>{document.page_count ?? "—"} pages · {document.evidence_chunk_count} evidence blocks</small></span>
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>)}
+          </div> : <p className="overview-inline-empty">No source documents yet.</p>}
+        </article>
+        <aside className="overview-next">
+          <span className="eyebrow">Next action</span>
+          <h2>{recentDocuments.length ? "Continue your review" : "Add your first source"}</h2>
+          <p>{recentDocuments.length
+            ? "Inspect extracted evidence or open relationships that need context."
+            : "Upload a PDF to begin building an evidence-backed fact layer."}</p>
+          <div>
+            <Link className="button button--primary" to="/documents"><Upload size={15} />
+              {recentDocuments.length ? "Open documents" : "Upload a PDF"}</Link>
+            {recentDocuments.length > 0 && <Link className="button button--secondary" to="/relationships?relation_type=NEEDS_REVIEW">Review relations</Link>}
+          </div>
+        </aside>
       </section>
     </div>
   );

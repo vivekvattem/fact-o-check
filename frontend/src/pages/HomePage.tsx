@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { FactOCheckLogo } from "../components/FactOCheckLogo";
+
 const processSteps = [
   { title: "Upload", description: "Add arbitrary PDFs through the interface.", icon: Upload },
   { title: "Evidence", description: "PyMuPDF extracts page and block evidence with provenance.", icon: ScanLine },
@@ -51,8 +53,7 @@ export function HomePage() {
     <a className="skip-link" href="#home-main">Skip to content</a>
     <header className="home-nav">
       <Link className="home-brand" to="/" aria-label="Fact-O-Check home">
-        <span aria-hidden="true">F</span>
-        <strong>Fact-O-Check</strong>
+        <FactOCheckLogo />
       </Link>
       <nav aria-label="Home navigation">
         <a href="#how-it-works">How it works</a>
@@ -82,6 +83,10 @@ export function HomePage() {
         </div>
         <div className="home-hero__visual" aria-label="Illustration of the evidence-to-fact workflow">
           <span className="illustrative-label">Illustrative workflow</span>
+          <ol className="hero-pipeline" aria-label="PDF to explanation pipeline">
+            {["PDF", "Evidence", "Facts", "Normalize", "Compare", "Explain"].map((step, index) =>
+              <li key={step}><span>{index + 1}</span><small>{step}</small></li>)}
+          </ol>
           <div className="source-sheet">
             <div className="source-sheet__top"><FileSearch size={17} /><span>Source PDF</span><small>Page</small></div>
             <div className="source-lines"><i /><i /><i /><i /></div>

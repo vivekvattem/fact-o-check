@@ -29,10 +29,20 @@ export function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [duplicateNotice, setDuplicateNotice] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [factCounts, setFactCounts] = useState<Record<string, number | null>>({});
 
   const loadDocuments = useCallback(async () => {
     try {
-      setDocuments(await api.documents.list());
+      const items = await api.documents.list();
+      setDocuments(items);
+      const counts = await Promise.allSettled(
+        items.map(document => api.facts.list({ document_id: document.id, limit: "1" })),
+      );
+      setFactCounts(Object.fromEntries(items.map((document, index) => [
+        document.id,
+        counts[index].status === "fulfilled" ? counts[index].value.total : null,
+      ])));
       setError(null);
     } catch {
       setError("Documents are unavailable. Check the backend connection and try again.");
@@ -111,11 +121,23 @@ export function DocumentsPage() {
         description="Upload PDFs and inspect the page-level evidence preserved for every source."
       />
 
-      <section className="upload-panel panel" aria-labelledby="upload-heading">
+      <section className={`upload-panel panel${dragging ? " upload-panel--dragging" : ""}`}
+        aria-labelledby="upload-heading"
+        onDragEnter={event => { event.preventDefault(); setDragging(true); }}
+        onDragOver={event => event.preventDefault()}
+        onDragLeave={event => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
+        }}
+        onDrop={event => {
+          event.preventDefault();
+          setDragging(false);
+          const file = event.dataTransfer.files[0];
+          if (file) void uploadFile(file);
+        }}>
         <div className="upload-panel__icon" aria-hidden="true"><FileUp size={22} /></div>
         <div className="upload-panel__copy">
           <h2 id="upload-heading">Add a source document</h2>
-          <p>Upload a PDF to preserve ordered text evidence with page-level provenance.</p>
+          <p>Drop a PDF here or choose a file · PDF only · configured upload limit applies</p>
         </div>
         {uploadButton}
       </section>
@@ -151,8 +173,9 @@ export function DocumentsPage() {
                   <th scope="col">Document</th>
                   <th scope="col">Pages</th>
                   <th scope="col">Evidence</th>
+                  <th scope="col">Facts</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Uploaded</th>
+                  <th scope="col">Last update</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,6 +197,7 @@ export function DocumentsPage() {
                     </td>
                     <td data-label="Pages"><span className="table-number">{document.page_count ?? "—"}</span></td>
                     <td data-label="Evidence"><span className="table-number">{document.evidence_chunk_count}</span></td>
+                    <td data-label="Facts"><span className="table-number">{factCounts[document.id] ?? "—"}</span></td>
                     <td data-label="Status">
                       <span
                         className={`document-status document-status--${document.status.toLowerCase()}`}
@@ -181,8 +205,8 @@ export function DocumentsPage() {
                         {document.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td data-label="Uploaded"><time dateTime={document.created_at}>
-                      {formatDate(document.created_at)}
+                    <td data-label="Last update"><time dateTime={document.updated_at}>
+                      {formatDate(document.updated_at)}
                     </time></td>
                   </tr>
                 ))}

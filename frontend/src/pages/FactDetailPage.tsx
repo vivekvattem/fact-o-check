@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, WandSparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Box, CheckCircle2, FileText, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -116,7 +116,10 @@ export function FactDetailPage() {
         <div className="evidence-list">{fact.evidence.map(chunk =>
           <article className="evidence-card" key={chunk.id}>
             <div className="evidence-card__meta"><span>Page {chunk.page_number}</span>
-              <span>Block {chunk.block_index + 1}</span></div><p>{chunk.text}</p>
+              <span>Block {chunk.block_index + 1}</span>
+              {chunk.bbox && <span title={chunk.bbox.map(value => value.toFixed(1)).join(", ")}>
+                <Box size={12} aria-hidden="true" /> Spatial provenance
+              </span>}</div><p>{chunk.text}</p>
           </article>)}</div>
       </section>
     </>}

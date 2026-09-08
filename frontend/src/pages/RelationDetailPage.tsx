@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Box } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -40,18 +40,22 @@ export function RelationDetailPage() {
       <header className="relation-detail__header">
         <div><span className="eyebrow">Cross-document comparison</span>
           <h1>{relation.fact_a.subject}</h1><p>{relation.fact_a.predicate}</p></div>
-        <RelationBadge type={relation.relation_type} />
       </header>
-      <section className="relation-facts" aria-label="Compared facts">
+      <section className="relation-comparison-workspace" aria-label="Compared facts and relationship">
         <FactPanel label="Fact A" fact={relation.fact_a} />
-        <FactPanel label="Fact B" fact={relation.fact_b} />
-      </section>
-      <section className="panel fact-section relation-decision" aria-labelledby="relation-heading">
-        <div className="decision-summary"><span className="eyebrow">Evidence-based assessment</span>
+        <aside className="relation-center" aria-labelledby="relation-heading">
+          <span className="relation-center__line" aria-hidden="true" />
+          <span className="eyebrow">Assessment</span>
           <h2 id="relation-heading"><RelationBadge type={relation.relation_type} /></h2>
           <strong>{relation.confidence === null ? "Unknown" :
-            `${Math.round(relation.confidence * 100)}%`} confidence</strong></div>
-        <p>{relation.explanation ?? "No explanation available."}</p>
+            `${Math.round(relation.confidence * 100)}%`} confidence</strong>
+          <p>{relation.explanation ?? "No explanation available."}</p>
+        </aside>
+        <FactPanel label="Fact B" fact={relation.fact_b} />
+      </section>
+      <section className="panel fact-section relation-decision" aria-labelledby="checks-heading">
+        <div className="section-heading"><div><span className="eyebrow">Evidence-based assessment</span>
+          <h2 id="checks-heading">Comparison checks</h2></div></div>
         {relation.relation_type === "NEEDS_REVIEW" && <aside className="review-guidance">
           <strong>A closer look is needed</strong>
           <p>Check each source’s metric label, period, geography, and scope. Missing context may explain the difference.</p>
@@ -85,12 +89,13 @@ function FactPanel({ label, fact }: { label: string; fact: FactRecord }) {
       <div><dt>Source</dt><dd><Link to={`/documents/${fact.document_id}`}>{fact.source_document?.original_filename ?? "Inspect source document"}</Link></dd></div>
       <Field label="Pages" value={fact.page_numbers.join(", ") || null} />
     </dl>
-    <Link className="back-link" to={`/facts/${fact.id}`}>Inspect full fact & context</Link>
+    <Link className="relation-fact__link" to={`/facts/${fact.id}`}>Inspect full fact &amp; context</Link>
     <div className="relation-evidence"><h3>Evidence</h3>
       <p className="muted-copy">Linked source text · inspect labels and context to verify the claim.</p>
       {fact.evidence.length === 0 && <p className="muted-copy">No source evidence is available for this fact.</p>}
       {fact.evidence.map(chunk => <blockquote key={chunk.id}>
-        <span>Page {chunk.page_number}</span>{chunk.text}
+        <span>Page {chunk.page_number} · Block {chunk.block_index + 1}
+          {chunk.bbox && <> · <Box size={10} aria-hidden="true" /> spatial provenance</>}</span>{chunk.text}
       </blockquote>)}
     </div>
   </article>;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { WandSparkles } from "lucide-react";
+import { Check, GitCompareArrows, ScanSearch, Upload, WandSparkles } from "lucide-react";
 import { api } from "../api/client";
 import type { DocumentRecord, NormalizationSummary } from "../types/api";
 
@@ -28,15 +28,20 @@ export function DocumentWorkflow({ document, revision, onChange }: {
     finally { setBusy(false); }
   }
   const steps = [
-    ["Upload", document.status === "PROCESSED" ? "Evidence available" : document.status.toLowerCase()],
-    ["Extract", counts.facts === null ? "Count unavailable" : `${counts.facts} saved facts`],
-    ["Normalize", summary ? `${summary.values_normalized} canonical values` : "Prepare values for comparison"],
-    ["Compare", counts.relations === null ? "Count unavailable" : `${counts.relations} saved relationships`],
+    { title: "Upload", status: document.status === "PROCESSED" ? "Evidence available" : document.status.toLowerCase(),
+      state: document.status === "FAILED" ? "error" : document.status === "PROCESSED" ? "complete" : "active", icon: Upload },
+    { title: "Extract", status: counts.facts === null ? "Count unavailable" : `${counts.facts} saved facts`,
+      state: (counts.facts ?? 0) > 0 ? "complete" : document.status === "PROCESSED" ? "active" : "pending", icon: ScanSearch },
+    { title: "Normalize", status: summary ? `${summary.values_normalized} canonical values` : "Prepare values for comparison",
+      state: summary ? "complete" : (counts.facts ?? 0) > 0 ? "active" : "pending", icon: WandSparkles },
+    { title: "Compare", status: counts.relations === null ? "Count unavailable" : `${counts.relations} saved relationships`,
+      state: (counts.relations ?? 0) > 0 ? "complete" : (counts.facts ?? 0) > 0 ? "active" : "pending", icon: GitCompareArrows },
   ];
   return <section className="panel workflow-panel" aria-label="Document workflow">
-    <ol className="workflow-steps">{steps.map(([title, status], index) => <li key={title}>
-      <span className="workflow-number" aria-hidden="true">{index + 1}</span>
-      <div><strong>{title}</strong><small>{status}</small></div>
+    <ol className="workflow-steps">{steps.map(({ title, status, state, icon: Icon }, index) => <li
+      className={`workflow-step workflow-step--${state}`} key={title} aria-label={`${title}: ${status}`}>
+      <span className="workflow-number" aria-hidden="true">{state === "complete" ? <Check size={13} /> : index + 1}</span>
+      <div><strong><Icon className="workflow-icon" size={15} aria-hidden="true" />{title}</strong><small>{status}</small></div>
     </li>)}</ol>
     <div className="workflow-normalize"><p>Normalize stored facts before comparing sources. Comparison also refreshes normalization automatically.</p>
       <button type="button" className="button button--secondary" disabled={busy || counts.facts === 0 || counts.facts === null}

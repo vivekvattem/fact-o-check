@@ -9,6 +9,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
+import { FactOCheckLogo } from "../components/FactOCheckLogo";
+
 const navigation = [
   { label: "Overview", to: "/overview", icon: LayoutDashboard, end: true },
   { label: "Documents", to: "/documents", icon: Files },
@@ -36,13 +38,8 @@ export function AppLayout() {
       <aside id="workspace-navigation" className={`sidebar${menuOpen ? " sidebar--open" : ""}`}>
         <div className="brand">
           <Link className="brand__home" to="/" onClick={() => setMenuOpen(false)}>
-            <div className="brand__mark" aria-hidden="true">
-              F
-            </div>
-            <div>
-              <strong>Fact-O-Check</strong>
-              <span>Evidence intelligence</span>
-            </div>
+            <FactOCheckLogo />
+            <span className="brand__descriptor">Evidence intelligence</span>
           </Link>
           <button
             className="icon-button sidebar__close"
@@ -99,7 +96,7 @@ export function AppLayout() {
           >
             <Menu size={20} />
           </button>
-          <Link className="mobile-brand" to="/">Fact-O-Check</Link>
+          <Link className="mobile-brand" to="/"><FactOCheckLogo /></Link>
           <span />
         </header>
         <main className="main-content" id="main-content" tabIndex={-1}>

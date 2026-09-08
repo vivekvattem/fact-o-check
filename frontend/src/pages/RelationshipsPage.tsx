@@ -195,7 +195,7 @@ function RelationCard({ relation }: { relation: RelationRecord }) {
     </div>
     <div className="relationship-values" aria-label="Compared values">
       <FactValue label="Fact A" fact={relation.fact_a} />
-      <span className="relationship-versus" aria-hidden="true">vs</span>
+      <span className="relationship-versus" aria-hidden="true"><GitCompareArrows size={15} /></span>
       <FactValue label="Fact B" fact={relation.fact_b} />
     </div>
     <p className="relationship-explanation">
@@ -206,7 +206,7 @@ function RelationCard({ relation }: { relation: RelationRecord }) {
     <footer>
       <span>{relation.confidence === null ? "Unknown" :
         `${Math.round(relation.confidence * 100)}%`} confidence</span>
-      <Link to={`/relationships/${relation.id}`}>Inspect comparison</Link>
+      <Link to={`/relationships/${relation.id}`}>{relation.relation_type === "NEEDS_REVIEW" ? "Inspect evidence" : "Review relation"}</Link>
     </footer>
   </article>;
 }
