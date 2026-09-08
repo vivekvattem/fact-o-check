@@ -1,63 +1,327 @@
 # Fact-O-Check
 
-## Overview
-
-Fact-O-Check is an evidence-grounded fact knowledge layer for PDFs. It is designed to extract structured facts, preserve document and page provenance, link every fact to exact source evidence, and compare facts across documents with explainable relationship classifications.
+Fact-O-Check builds a structured fact knowledge layer over PDFs. It extracts numerical and semantic facts, grounds every fact in page-level evidence, normalizes values and context, and compares facts across documents to identify agreements, conflicts, contextual reconciliations, and cases requiring review.
 
 > Facts, not text chunks, are the primary unit of knowledge.
 
-This repository contains the Phase 4 application: PDFs can be uploaded, parsed into evidence blocks, explicitly converted into structured facts with inspectable provenance, deterministically normalized, and compared across documents with explainable relationship classifications.
+Every fact remains traceable to its source document, page, and extracted evidence block.
 
-## Why this architecture
+## Problem Statement
 
-MongoDB was selected because facts have a stable core but heterogeneous contextual qualifiers. Flexible document schemas let the knowledge layer evolve as new fact types and domain-specific context appear without forcing every fact into one rigid shape.
+Traditional PDF search and RAG retrieve passages, but they do not reliably represent individual factual claims. Fact-O-Check instead:
 
-Evidence is stored separately and referenced by identifier rather than duplicated inside facts. This keeps provenance explicit, avoids copies drifting out of sync, and allows multiple facts to point to the same source passage.
+- extracts structured facts;
+- preserves exact evidence provenance;
+- normalizes values, units, time, and context;
+- compares facts across documents; and
+- explains why facts corroborate, contradict, reconcile, or need review.
 
-MongoDB is not being used as an excuse to skip validation: Beanie and Pydantic models enforce the stable structure, types, ranges, timestamps, enums, and identifiers at the application boundary.
+## What Fact-O-Check Does
+
+```text
+PDF Upload
+    → Evidence Extraction
+    → Structured Fact Extraction
+    → Deterministic Normalization
+    → Cross-Document Comparison
+    → Evidence-Grounded Relationship Explanation
+```
+
+Users can upload arbitrary PDFs through the React UI or FastAPI API. PyMuPDF extracts page-level layout blocks, while MongoDB and Beanie persist documents, evidence, facts, and relations. A provider-independent extractor supports OpenAI and OpenRouter through an OpenAI-compatible interface. Normalization is deterministic, relation reasoning is deterministic first, and an optional semantic fallback handles comparisons whose meaning cannot be resolved safely with local rules.
+
+## Key Features
+
+### Evidence-grounded facts
+
+Every extracted fact stores or references:
+
+- its document and 1-indexed page;
+- one or more evidence chunks;
+- block order and bounding-box provenance;
+- the exact raw value and unit;
+- subject, predicate, scope, geography, period, qualifiers, and confidence.
+
+Candidate facts are schema-validated. Evidence references must belong to the same document and extraction window, and the raw value must occur verbatim in cited evidence.
+
+> Fact extraction is probabilistic; evidence provenance is deterministic.
+
+### Deterministic normalization
+
+The normalization layer supports:
+
+- INR and USD in base currency units;
+- crore, million, lakh, thousand, and common report abbreviations such as `Cr`, `Mn`, `Bn`, and `K`;
+- percentages, counts, typed quantities, booleans, and directly parseable dates;
+- fiscal years, fiscal quarters, year-ended periods, and as-of dates; and
+- conservative entity and predicate canonicalization.
+
+There is no foreign-exchange or physical-unit conversion. Unsupported or ambiguous values remain explicit with normalization warnings rather than being guessed.
+
+### Cross-document reasoning
+
+Fact-O-Check uses five relationship labels:
+
+- `CORROBORATES`
+- `CONTRADICTS`
+- `RECONCILABLE`
+- `UNRELATED`
+- `NEEDS_REVIEW`
+
+> Deterministic checks decide clear numerical relationships; LLM reasoning is reserved for ambiguous semantic context.
+
+Clear numerical relationships use normalized types, units, values, tolerances, and context without an LLM call. Semantic fallback is considered only when deterministic rules cannot safely resolve predicate wording or contextual meaning.
+
+### Explainable relationships
+
+Relation details expose Fact A and Fact B, their raw and normalized values, source documents and pages, evidence text, contextual differences, confidence, and safe structured reasoning metadata. Provider prompts and private reasoning are not persisted or returned.
 
 ## Architecture
 
 ```text
-React
-  ↓
-FastAPI
-  ↓
-Beanie
-  ↓
-MongoDB
+React + TypeScript + Vite
+        |
+        v
+FastAPI REST API
+        |
+        +--> PDF Evidence Extraction (PyMuPDF)
+        |
+        +--> Fact Extraction
+        |       |
+        |       +--> OpenAI / OpenRouter provider adapter
+        |
+        +--> Deterministic Normalization
+        |
+        +--> Relation Candidate Generation
+        |
+        +--> Deterministic Reasoning
+        |       |
+        |       +--> Semantic fallback when ambiguous
+        |
+        v
+MongoDB / Beanie
+    - documents
+    - evidence_chunks
+    - facts
+    - fact_relations
 ```
 
-The backend uses a FastAPI lifespan to initialize and close a MongoDB/Beanie connection. Document models are registered in one place to prevent import cycles. The frontend is a strict TypeScript Vite application with React Router and a small typed API client.
+The API initializes MongoDB and Beanie during its FastAPI lifespan. Upload, extraction, normalization, and comparison are separate explicit operations. Uploading a PDF does not automatically invoke an LLM.
 
-PyMuPDF performs local layout-block extraction during ingestion. A provider-independent fact extraction service consumes stored evidence only when explicitly requested. A separate deterministic service canonicalizes supported values and context without making LLM calls. Phase 4 adds incremental candidate matching and deterministic-first relationship reasoning, with the existing provider abstraction reserved for ambiguous semantic comparisons.
+## Data Model
 
-## Ingestion flow
+### `documents`
 
-1. `POST /api/documents` streams an uploaded file into bounded in-memory chunks and rejects empty, oversized, or non-PDF content.
-2. The service computes a SHA-256 content hash and returns the existing document when that hash is already present.
-3. A new `Document` moves through `UPLOADED` and `PROCESSING` states.
-4. PyMuPDF parses the bytes page-by-page off the API event loop and extracts useful text blocks.
-5. Evidence blocks are stored with the document identifier, 1-indexed page number, ordered block index, bounding box, source block number, and page dimensions.
-6. The document becomes `PROCESSED` with its page count, or `FAILED` with a preserved error message when parsing fails.
+Stores uploaded-PDF metadata, content hash, file size, page count, processing status, and safe failure information. Duplicate detection uses the content hash.
 
-Original PDF bytes are not persisted locally or in MongoDB. Phase 1 stores document metadata and extracted evidence only.
+### `evidence_chunks`
 
-## Evidence and provenance
+Stores page/block-level text with its document reference, page number, block index, bounding box, and layout metadata. Evidence is stored separately so multiple facts can cite the same source block.
 
-The provenance path is:
+### `facts`
 
-```text
-Document → 1-indexed page → ordered EvidenceChunk
+Stores structured claims containing subject, predicate, raw and normalized values and units, value type, temporal context, geography, scope, qualifiers, confidence, extraction metadata, and evidence references.
+
+### `fact_relations`
+
+Links two cross-document facts with a relationship label, confidence, explanation, candidate-match information, deterministic value checks, and structured context metadata.
+
+## Approach
+
+### Stage 1 — Evidence first
+
+PDFs are converted into stable, ordered page/block evidence before factual interpretation. This creates a source layer that can be inspected independently of model output.
+
+### Stage 2 — Structured extraction
+
+The configured LLM receives bounded evidence windows and returns typed fact candidates constrained by strict JSON Schema. Pydantic and provenance validation run before persistence.
+
+### Stage 3 — Deterministic normalization
+
+Numbers, currencies, percentages, units, entities, predicates, and temporal context are normalized conservatively. Raw extracted fields remain available for comparison and audit.
+
+### Stage 4 — Candidate matching
+
+Only likely comparable cross-document facts are evaluated. Matching uses compatible value types and units, canonical subjects, safe common reporting phrases, and a conservative token-similarity threshold.
+
+### Stage 5 — Deterministic-first reasoning
+
+Typed tolerances and explicit period, scope, geography, and reporting-status checks resolve clear numerical relationships locally.
+
+### Stage 6 — Semantic fallback
+
+Provider-independent LLM reasoning is available only when deterministic rules cannot safely resolve semantic context. Invalid or failed fallback output becomes `NEEDS_REVIEW`.
+
+### Stage 7 — Evidence-grounded explanation
+
+Every persisted relation links back to both structured facts and their PDF evidence. The system prefers `NEEDS_REVIEW` over an unsupported conclusion.
+
+## Verified Assignment Cases
+
+Validation used persisted starter evidence and the same production extraction, normalization, and relation schemas. No filename-specific rule or expected label was added.
+
+### Case 1 — Corroboration
+
+- **RBI Annual Report FY2024/25:** real GDP growth of `6.5 per cent`.
+- **IMF India Article IV:** expected real GDP growth of `6.5 percent` for 2024/25.
+- **Result:** `CORROBORATES`.
+
+Both facts are stored on page 1 of their scoped evidence documents. They normalize to `6.5 PERCENT` for the same fiscal period, subject, and compatible GDP-growth metric. Both facts have valid persisted evidence references.
+
+### Case 2 — Reconciled through context
+
+- **Economic Survey 2024-25:** real GDP growth of `6.4 per cent` for FY25, identified as the first advance estimate.
+- **IMF India Article IV:** expected real GDP growth of `6.5 percent` for 2024/25.
+- **Result:** `RECONCILABLE`.
+
+Both facts are stored on page 1 of their scoped evidence documents. A value-only comparison could treat the difference as conflict, but the explicit estimate-versus-expectation context and data vintage explain the apparent mismatch.
+
+### Case 3 — Contradiction not found
+
+No defensible contradiction was found in the validated starter evidence. Candidates were checked for matching period, scope, units, geography, rounding, estimate status, and data vintage. The system did not manufacture a conflict; incomplete and ambiguous candidates remained `NEEDS_REVIEW` or were not related.
+
+The Delhivery Annual Report says female-worker headcount increased by both 60% in a summary statement and 59% in detailed evidence. The detailed counts rise from 3,519 to 5,594, which is approximately 58.97%. The persisted 60% fact and 59% evidence can therefore reflect different rounding precision, and they were not labeled `CONTRADICTS`.
+
+### Case 4 — Real failure
+
+On Delhivery Annual Report page 5, extraction associated `₹1,266Mn` with `Revenue from services`, although the page layout places that value under EBITDA. Provenance validation succeeded—the cited value and evidence block were real—but the spatial table association was wrong. This shows that PDF text reading order does not always preserve the visual relationship between a metric label and value.
+
+Current mitigation passes bounding-box coordinates into extraction, keeps source evidence inspectable, and allows ambiguous comparisons to remain `NEEDS_REVIEW`. The failure is not fully solved. Stronger table/layout reconstruction, multimodal or table-aware extraction, and an OCR/layout fallback are future improvements.
+
+## Why Not Force a Contradiction?
+
+Correctness matters more than satisfying a label count. Fact-O-Check returns `NEEDS_REVIEW` or no contradiction when the evidence does not support a genuine same-period, same-scope conflict. This is conservative reasoning rather than fabricated certainty.
+
+## Demo Flow
+
+The following path fits a three-minute evaluator demo:
+
+1. Open Fact-O-Check and select **Documents**.
+2. Upload a PDF, or select a persisted starter document.
+3. Open **Document Detail** and show the Upload → Extract → Normalize → Compare workflow.
+4. Extract facts, normalize them, and compare them with persisted facts from other sources.
+5. Open **Facts** and inspect a structured fact, its normalized fields, page, and evidence.
+6. Open **Relationships**, filter **Corroborated**, and inspect the RBI/IMF 6.5% GDP pair.
+7. Filter **Reconciled** and inspect the Economic Survey 6.4% versus IMF 6.5% GDP pair.
+8. Show that **Contradictions** honestly displays zero for the validated data.
+9. Open **Needs Review** to inspect comparisons with missing or ambiguous context.
+10. Open **Relation Detail** and show both source documents, pages, evidence panels, contextual checks, and explanation.
+
+## Setup & Run
+
+### Prerequisites
+
+- Python 3.11 or newer
+- Node.js and npm; the repository does not pin a Node version
+- MongoDB running locally or a MongoDB Atlas connection string
+- an OpenAI or OpenRouter API key for live extraction and semantic fallback
+- optional Docker for a separately managed MongoDB instance; this repository does not include Docker or Compose configuration
+
+### Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+cp .env.example .env
+# Configure MongoDB and one LLM provider in .env.
+uvicorn app.main:app --reload
 ```
 
-`EvidenceChunk` records reference a document by `PydanticObjectId`; they do not embed the full document. Each chunk retains a PyMuPDF bounding box and ordering metadata so later phases can cite a page, reconstruct approximate reading order, and investigate layout or table extraction failures. Deleting a document cascades to its facts and evidence chunks.
+The backend runs at `http://localhost:8000`, Swagger UI is at `http://localhost:8000/docs`, process health is available at `/health`, and database readiness is available at `/ready`.
 
-Layout blocks are kept separate instead of merging a whole PDF into one text field. Whitespace is normalized within lines, line boundaries are preserved, non-text layout blocks are ignored, and isolated one-token fragments are filtered out. Blank pages are valid and simply produce no evidence chunks.
+### Frontend
 
-Duplicate detection is content-based rather than filename-based. Uploading the same bytes under a different filename returns the original document with `already_existed: true` and creates no additional evidence.
+In a second terminal:
 
-## Project structure
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+The frontend development server runs at `http://localhost:5173` and uses `VITE_API_URL` for the backend origin.
+
+## Environment Variables
+
+Only variable names are shown here; keep credentials in ignored local `.env` files.
+
+Backend application and database:
+
+- `APP_ENV`
+- `APP_NAME`
+- `API_PREFIX`
+- `MONGODB_URI`
+- `MONGODB_DB_NAME`
+- `CORS_ORIGINS`
+- `MAX_UPLOAD_SIZE_BYTES`
+
+LLM and extraction:
+
+- `LLM_PROVIDER`
+- `LLM_MODEL`
+- `LLM_API_KEY` — OpenAI credential
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_BASE_URL`
+- `OPENROUTER_HTTP_REFERER`
+- `OPENROUTER_X_TITLE`
+- `LLM_TIMEOUT_SECONDS`
+- `EXTRACTION_WINDOW_CHARS`
+- `EXTRACTION_WINDOW_CHUNKS`
+- `EXTRACTION_MAX_WINDOWS`
+- `EXTRACTION_MAX_OUTPUT_TOKENS`
+
+Frontend:
+
+- `VITE_API_URL`
+
+## API Overview
+
+### Health
+
+- `GET /health`
+- `GET /ready`
+
+### Documents
+
+- `POST /api/documents`
+- `GET /api/documents`
+- `GET /api/documents/{id}`
+- `DELETE /api/documents/{id}`
+- `GET /api/documents/{id}/evidence`
+- `POST /api/documents/{id}/extract-facts`
+- `POST /api/documents/{id}/normalize-facts`
+- `POST /api/documents/{id}/compare-facts`
+
+### Facts
+
+- `GET /api/facts`
+- `GET /api/facts/{id}`
+- `POST /api/facts/{id}/normalize`
+
+### Relations
+
+- `GET /api/relations`
+- `GET /api/relations/{id}`
+
+## Testing
+
+The latest verified checkpoint has 139 passing backend tests. The frontend lint and production build checks also pass.
+
+```bash
+cd backend
+pytest
+ruff check .
+
+cd ../frontend
+npm run lint
+npm run build
+```
+
+Provider tests use fakes or mocked HTTP transports and do not make paid API calls.
+
+## Project Structure
 
 ```text
 fact-o-check/
@@ -67,247 +331,61 @@ fact-o-check/
 │   │   ├── core/
 │   │   ├── db/
 │   │   ├── models/
+│   │   ├── normalization/
 │   │   ├── schemas/
 │   │   └── services/
-│   ├── tests/
-│   ├── pyproject.toml
-│   └── .env.example
+│   └── tests/
 ├── frontend/
-│   ├── src/
-│   │   ├── api/
-│   │   ├── components/
-│   │   ├── layouts/
-│   │   ├── pages/
-│   │   └── types/
-│   └── .env.example
+│   └── src/
 ├── docs/
-└── sample_data/
+├── sample_data/
+└── README.md
 ```
 
-## Setup
+## Limitations & Next Steps
 
-### Prerequisites
+Current limitations:
 
-- Python 3.11 or newer
-- Node.js 20 or newer
-- MongoDB running locally, or a MongoDB Atlas connection string
+- OCR is not implemented, so image-only pages may produce no evidence text.
+- Complex tables and multi-column reading order can break label/value association.
+- Broad semantic entity resolution is not implemented.
+- Conservative candidate matching can miss valid relationships.
+- Foreign-exchange and physical-unit conversion are not implemented.
+- LLM extraction remains probabilistic, and confidence is not calibrated.
+- A dataset is not guaranteed to contain a defensible contradiction.
+- Sparse context intentionally produces `NEEDS_REVIEW`.
+- Original PDF bytes are not persisted after ingestion; only metadata and extracted evidence are stored.
+- Upload, extraction, normalization, and comparison run synchronously in request workflows rather than durable background jobs.
 
-### Backend
+Next steps include stronger table and layout reconstruction, OCR or multimodal fallback, semantic entity resolution, explicit data-vintage modeling, asynchronous job processing, object storage for source PDFs, a richer evaluation dataset, and a dedicated human-review workflow.
 
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-test -e .env || cp .env.example .env
-uvicorn app.main:app --reload
-```
+## Additional Notes
 
-The API is available at `http://localhost:8000`. Use `GET /health` for process health and `GET /ready` to verify that MongoDB is reachable. Interactive API documentation is available at `/docs`.
+- Starter data was used for validation, not production hard-coding.
+- There are no filename-specific production rules or hard-coded expected relationship labels in production logic.
+- Relationship classifications come from persisted extracted facts.
+- The OpenAI/OpenRouter abstraction allows provider changes without changing the extraction workflow.
+- Deterministic normalization and reasoning paths minimize LLM calls and cost.
+- Confidence and reasoning metadata support review; they do not imply absolute certainty.
 
-Run backend checks with:
+## Tech Stack
 
-```bash
-pytest
-ruff check .
-```
+- **Frontend:** React, TypeScript, Vite, React Router, Lucide React
+- **Backend:** FastAPI, Python, PyMuPDF, Beanie, Pydantic
+- **Database:** MongoDB
+- **AI:** provider-independent OpenAI/OpenRouter-compatible structured extraction and semantic reasoning
+- **Testing and quality:** pytest, Ruff, ESLint, TypeScript, and Vite build tooling
 
-### MongoDB Atlas or local MongoDB
+## Demo Video
 
-For local development, the example configuration expects MongoDB at `mongodb://localhost:27017` and uses the `fact_o_check` database.
+**TODO:** [Demo video — add link before submission]
 
-For Atlas, copy `backend/.env.example` to `backend/.env`, replace `MONGODB_URI` with the Atlas connection string, and keep credentials only in that ignored `.env` file. Add the machine's IP address to the Atlas network access list and ensure the database user has access to the configured database.
+## Live Demo
 
-`CORS_ORIGINS` accepts a comma-separated list when more than one frontend origin is needed.
+Deployment pending.
 
-`MAX_UPLOAD_SIZE_BYTES` sets the in-memory upload ceiling and defaults to 25 MiB.
+Once deployed, this section can list the frontend, API, and API documentation URLs.
 
-### Frontend
+## GitHub / Development
 
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
-
-The development UI is available at `http://localhost:5173`. `VITE_API_URL` controls the backend base URL.
-
-Run frontend checks with:
-
-```bash
-npm run lint
-npm run build
-```
-
-## Current phase
-
-Phase 5 validation completed with bounded persisted Delhivery and India starter evidence. Ingestion and extraction remain explicit operations; comparison normalizes its persisted fact pool before candidate generation so it cannot reason over stale canonical fields. Facts can be compared incrementally across documents, and the Relationships UI exposes classifications, source evidence, contextual checks, and safe reasoning metadata. Upload never triggers extraction, normalization, or comparison.
-
-## Fact extraction
-
-> Fact extraction is probabilistic; evidence provenance is deterministic.
-
-`FactExtractor` is an asynchronous protocol accepting bounded `EvidenceContext` windows and returning untrusted structured candidates. The workflow handles document eligibility, windowing, schema/provenance validation, deduplication, and persistence independently of the provider. Tests inject `FakeFactExtractor` and mock HTTP transport; no paid calls are required.
-
-The OpenAI and OpenRouter adapters use the same OpenAI-compatible Chat Completions request and strict JSON Schema response format. Qualifiers travel as key/value text pairs because strict schemas disallow arbitrary object keys; the adapter converts them into the existing fact qualifiers dictionary. Refusals, truncation, malformed envelopes, HTTP failures, and timeouts produce safe error codes without returning provider bodies or logging API keys.
-
-### Configuration
-
-Add these values to the ignored `backend/.env` (start the backend from `backend/`):
-
-```dotenv
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
-LLM_API_KEY=
-OPENROUTER_API_KEY=
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_HTTP_REFERER=
-OPENROUTER_X_TITLE=Fact-O-Check
-LLM_TIMEOUT_SECONDS=45
-EXTRACTION_WINDOW_CHARS=12000
-EXTRACTION_WINDOW_CHUNKS=20
-EXTRACTION_MAX_WINDOWS=30
-EXTRACTION_MAX_OUTPUT_TOKENS=4000
-```
-
-Set a real key locally to enable extraction. An empty key does not prevent startup; extraction returns HTTP 503 `llm_not_configured`. Unknown providers return HTTP 503 `llm_provider_unsupported`. The chosen model must support strict structured output. Evidence in each requested window is sent to the configured LLM provider; original PDFs are not sent. API storage is disabled with `store: false`.
-
-### Providers
-
-OpenAI uses `LLM_PROVIDER=openai`, `LLM_MODEL=<OpenAI model>`, and `LLM_API_KEY=<secret>`.
-
-OpenRouter uses `LLM_PROVIDER=openrouter`, `LLM_MODEL=<OpenRouter model slug>`, and `OPENROUTER_API_KEY=<secret>`. OpenRouter is OpenAI-compatible, so it can switch among compatible models without changing the extraction pipeline. `OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1`; `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` are optional attribution headers, with the title defaulting to `Fact-O-Check`.
-
-### Fact schema and validation
-
-The existing `Fact` model retains document ID, evidence IDs, subject, predicate, raw/normalized value and unit, value type, period start/end, as-of date, geography, scope, qualifiers, confidence, metadata, and timestamps. Phase 2 candidates support NUMBER, PERCENTAGE, CURRENCY, DATE, BOOLEAN, STRING, ENTITY, and QUANTITY. All raw values, even numbers and booleans, are strings copied verbatim from evidence; normalized fields remain null.
-
-The prompt requests meaningful supported claims, explicit context, lower confidence for ambiguity, and no invented information or mathematical normalization. Ambiguous dates remain original labels in qualifiers rather than invented calendar dates. The workflow validates each candidate independently and requires every reference to occur in that exact window from the same document. The raw value must occur verbatim in a cited text fragment. Insert/save/replace hooks also reject missing, nonexistent, or foreign-document evidence. These checks establish provenance, not the semantic truth of the model's interpretation. Internal prompts and reasoning are not returned in fact APIs.
-
-### Windowing and cost
-
-Chunks are ordered by page, block index, then ID and greedily packed with adjacent content, including page boundaries, up to the configured text-character and chunk limits. There is no overlap or per-block call requirement. Oversized chunks are split into bounded fragments preserving the original chunk ID, page, and character offset; no text is silently truncated. Identical windows are removed within a run. Bounds apply to evidence text; IDs, JSON escaping, schema, and instructions add overhead, and character counts are not exact token counts.
-
-Calls are sequential with no automatic retries. The default cap is 30 windows, 4,000 output tokens per call, 45 seconds per call, and a 180-second overall LLM budget per request. The summary reports skipped windows if budget/caps are reached; increase window or count limits for large documents, subject to the request budget. Explicit re-extraction calls the provider again and incurs usage; there is no persistent window cache or resumable queue yet. Logs report processed/failed windows, accepted/created facts, and duration without evidence text or credentials.
-
-### Deduplication and failure behavior
-
-Extraction deduplication is within one document only. It compares exact subject, predicate, raw value, value type, raw unit, dates/period, geography, scope, and qualifiers, and requires overlapping evidence IDs. Different dates, scope, qualifiers, or disjoint evidence remain distinct. Cross-document matching is a separate explicit Phase 4 workflow over normalized facts.
-
-Re-extraction conservatively merges: identical supported facts retain their IDs and confidence; distinct candidates are added. Existing facts are never erased by an empty result or failed window. Results from successful windows persist even if others fail. This preserves prior output but may retain stale or differently phrased interpretations; re-extraction is not replacement. A five-minute MongoDB lease excludes concurrent extraction/deletion across API workers and expires after a crash. Database failures use the existing 503 handler; prior successful writes remain available.
-
-### APIs
-
-- `POST /api/documents/{document_id}/extract-facts`: requires an existing PROCESSED document; returns status, windows processed/failed/skipped, facts produced/created/deduplicated, rejected candidates, safe failure codes, and duration. HTTP 200 summaries can be `completed`, `partial`, or `failed`; clients must inspect status. Missing documents return 404, ineligible/busy documents 409, missing LLM configuration 503.
-- `GET /api/facts`: paginated `{items,total,offset,limit}` with optional exact `document_id`, `subject`, `predicate`, and `value_type` filters; default limit 50, maximum 100.
-- `GET /api/facts/{fact_id}`: structured fact fields, source document, page numbers, evidence text, and confidence. Unknown facts return 404; invalid IDs/filters return 422.
-
-## Deterministic normalization
-
-> Normalization is deterministic where possible; ambiguous values remain explicit rather than being guessed.
-
-Normalization is implemented as pure parsing modules for numbers, units, dates, entities, and predicates, coordinated by a persistence service. It never calls an LLM and never changes `raw_value`, `raw_unit`, `subject`, or `predicate`. Canonical subjects and predicates use separate fields. Each run replaces only `metadata.normalization`, retaining extraction metadata and recording a version, deterministic rules, and warnings. Re-running with unchanged input is idempotent and does not update the fact timestamp.
-
-### Canonical values and units
-
-- Currency values use base currency units: one INR or one USD. Indian and international scale words and common report abbreviations are expanded (`thousand`/`K`, `lakh`/`lac`, `million`/`Mn`, `crore`/`Cr`, and `billion`/`Bn`). For example, `₹8,142 Cr` and `₹81,420 million` both become `81420000000 INR`. No foreign-exchange conversion occurs.
-- Percentages use percentage points: `6.5%`, `6.5 percent`, and `6.50 per cent` become `6.5 PERCENT`, not `0.065`.
-- Plain numbers use `COUNT` unless an explicit unit is supplied. Quantities retain a normalized uppercase unit without unit conversion. Western and Indian comma grouping, decimals, leading minus signs, and enclosing-parentheses negatives are supported.
-- Boolean literals use `BOOLEAN`; directly parseable date facts use ISO `YYYY-MM-DD` with unit `DATE`. Unsupported types, currencies, ranges, approximate values, malformed grouping, or missing quantity units remain null with warnings.
-
-### Temporal context
-
-`year ended <date>` deterministically maps to the inclusive one-year period ending on that date, and `as of <date>` populates `as_of_date`. Existing extracted dates take precedence. `FY24`, `FY2024`, and `FY 2023-24` use an April 1–March 31 Indian fiscal year only when the fact also has India context, such as geography, an India qualifier, or INR value/unit. `Q1` through `Q4` within such an FY narrow that fiscal period to its calendar dates. FY text without supporting India context stays unresolved and records a warning.
-
-### Entity and predicate rules
-
-Entity canonicalization folds case, whitespace, and surrounding punctuation, removes repeated terminal corporate suffixes such as `Limited`, `Ltd.`, `Inc.`, and `Corporation`, and separates fiscal-period or unit labels from metric subjects. Generic references such as `the Company` remain unresolved because they require document-specific context. Predicate normalization performs formatting only: lowercase text and punctuation/whitespace become snake case, so `Revenue from Services` becomes `revenue_from_services`. It does not merge semantic synonyms.
-
-### Normalization APIs
-
-- `POST /api/documents/{document_id}/normalize-facts` normalizes every persisted fact in the document and reports total facts, changed facts, normalized values, normalized temporal contexts, and facts with warnings.
-- `POST /api/facts/{fact_id}/normalize` normalizes one fact and returns its full provenance-rich representation.
-
-## Cross-document relationship reasoning
-
-> Deterministic checks decide clear numerical relationships; LLM reasoning is reserved for ambiguous semantic context.
-
-The comparison pipeline is staged: normalization, candidate generation, comparability checks, deterministic value/context reasoning, optional semantic fallback, and persistence. Candidate generation starts with facts from the selected document and uses compatible canonical units plus exact canonical subjects or conservative lexical subject matching. Lexical matching removes only safe stopwords, recognizes a small set of common reporting phrases, and requires 85% token-set similarity otherwise; its method, score, and shared tokens are persisted in safe reasoning metadata. Predicate normalization removes common reporting verbs and makes an expanded metric name comparable with its abbreviation without adding publisher-specific aliases. It never compares a fact with itself, and it does not merge `EBITDA` with `Adjusted EBITDA`. Canonical pair ordering and a unique MongoDB index prevent reversed and repeated relations. Comparing a newly added document therefore extends the relation set without rebuilding old pairs.
-
-Relations use `CORROBORATES`, `CONTRADICTS`, `RECONCILABLE`, `UNRELATED`, or `NEEDS_REVIEW`. Clear canonical equality corroborates. Material differences contradict only when subject, predicate, type, unit, and explicit context are comparable. Explicit period, scope, geography, or estimate/forecast/actual differences can make an apparent mismatch reconcilable. Missing normalization or one-sided context produces `NEEDS_REVIEW` rather than a forced conclusion.
-
-### Context and tolerance policy
-
-Context comparison returns structured temporal, geography, scope, qualifier, status, difference, and missing-dimension fields. Same periods and as-of dates are distinguished from different or one-sided temporal context. A matching canonical subject can supply an omitted geography, and fiscal-period-only scope text is treated as temporal context rather than a conflicting business scope. Estimate, forecast, and actual markers are read from explicit predicates, scope, or qualifiers; arbitrary qualifier differences remain ambiguous for semantic review.
-
-Tolerance is typed rather than universal:
-
-- Currency requires the same canonical currency and allows a 0.1% relative display-rounding difference, expanded to 0.5% with an explicit approximation marker or differing display scales.
-- Percentages use an absolute tolerance of 0.1 percentage points.
-- Counts are exact unless an approximation marker is present, when a 1% relative tolerance applies.
-- Quantities require the same normalized unit and use a 0.1% relative tolerance.
-- Dates and booleans are exact; strings/entities use canonical equality, with a small explicit set of domain-neutral textual opposites, before semantic fallback.
-
-Each persisted relation records the tolerance, absolute and relative differences, unit equivalence, rounding indicators, structured context compatibility, whether semantic fallback ran, and safe warnings. It never stores provider prompts or private chain-of-thought.
-
-### Semantic fallback and relation APIs
-
-Only ambiguous predicate wording, textual meaning, or qualifier context can reach the provider-independent semantic reasoner. It sends the two structured facts, relevant evidence excerpts, allowed labels, and deterministic checks through the configured OpenAI-compatible OpenAI or OpenRouter endpoint. Strict structured output is validated with Pydantic. Provider failure or invalid output becomes `NEEDS_REVIEW`; semantic output is never allowed to override a clear deterministic numerical decision.
-
-- `POST /api/documents/{document_id}/compare-facts` incrementally compares a document with other documents, skips existing pairs, persists new relations, and returns label counts.
-- `GET /api/relations` returns paginated relations and supports `relation_type`, `document_id`, `subject`, and `min_confidence` filters.
-- `GET /api/relations/{relation_id}` returns both facts with raw/canonical values, source documents, page numbers, evidence text, context, explanation, and safe reasoning details.
-
-## Required Assignment Cases
-
-A bounded validation added only the relevant persisted GDP evidence from the Economic Survey 2024-25, RBI Annual Report 2024-25, and IMF 2024 India Article IV. It used one extraction window per source (three provider calls total), then normalized the facts and ran one deterministic relation pass with no semantic fallback.
-
-### Case 1 — Verified corroboration
-
-The RBI FY2024/25 real GDP growth fact (`6.5 per cent`) and IMF FY2024/25 real GDP growth fact (`6.5 percent`) normalize to the same subject, metric, fiscal period, percentage unit, and value. Their reporting-status difference is explicit, and the persisted relation is `CORROBORATES` with valid source evidence for both facts.
-
-### Case 2 — Verified reconciliation
-
-The Economic Survey first-advance-estimate fact (`6.4 per cent` for FY25) and IMF expected-growth fact (`6.5 percent` for 2024/25) normalize to the same subject, metric, fiscal period, and unit. The explicit estimate-versus-forecast context explains the small value difference, so the persisted relation is `RECONCILABLE`.
-
-### Case 3 — Contradiction not found
-
-The persisted India starter facts contain no genuine same-period, same-scope, materially conflicting value. No `CONTRADICTS` case is claimed or forced.
-
-### Case 4 — Verified extraction/reasoning failure
-
-The Annual Report page 5 extraction associated raw value `₹1,266Mn` with subject `Revenue from services`; the page layout shows that value as EBITDA. Verbatim-value and evidence-ID validation correctly preserved the cited source but cannot prove that a value was matched to the correct nearby label. A second failure mode appears in cross-document comparison: Annual Report page 7 revenue `81,415` (normalized to `81415000000 INR`) and Earnings Presentation page 6 revenue `₹8,142 Cr` (normalized to `81420000000 INR`) remain `NEEDS_REVIEW` because the annual chart fact omitted its FY24 context while the presentation fact retained it.
-
-Current mitigation is strict schema/provenance validation, layout bounding boxes in extraction context, conservative normalization, and `NEEDS_REVIEW` when context is one-sided. A future improvement should add deterministic spatial table grouping and explicit page-heading context propagation before extraction.
-
-## Demo Flow
-
-1. Open **Relationships**, select **Corroborated**, and inspect the RBI/IMF `6.5` FY2024/25 GDP pair.
-2. Select **Reconciled** and inspect the Economic Survey `6.4` first advance estimate against the IMF `6.5` expectation.
-3. Open **Documents**, select the persisted Delhivery FY24 Annual Report, and inspect evidence on page 5.
-4. Open **Facts** and inspect the `Revenue from services` / `₹1,266Mn` fact alongside its cited evidence to demonstrate the retained layout-label failure.
-
-### Current limitations
-
-- OCR is not implemented yet, so image-only pages may produce no textual evidence.
-- Original PDF files are not retained after in-memory processing.
-- PyMuPDF block order is approximate for complex multi-column layouts and tables.
-- Upload processing runs within the request lifecycle; a durable background job queue is deferred.
-- Extraction depends on source layout and model interpretation; verbatim values and valid citations do not prove semantic correctness. Confidence is self-reported, not calibrated.
-- Nonoverlapping window boundaries can split context. Large documents can hit caps, and skipped windows are not automatically resumed.
-- Strict verbatim-value validation may reject otherwise useful paraphrases or values spanning fragments.
-- No FX conversion, broad semantic entity resolution, embeddings, vector/graph database, RAG/chat, or deployment is implemented.
-- Candidate generation is deliberately conservative; synonyms outside the bounded reporting-phrase and high-threshold token rules require semantic fallback or remain unmatched.
-- Display tolerances are general typed defaults, not domain-specific accounting materiality thresholds. Sparse or ambiguous context intentionally produces review items.
-- Tests use MongoDB mocks and fake providers; real provider/account compatibility requires an optional live smoke test with a configured key.
-
-## Roadmap
-
-- Phase 1 — PDF ingestion and evidence (complete)
-- Phase 2 — Fact extraction (implemented)
-- Phase 3 — Deterministic normalization (implemented)
-- Phase 4 — Relationship reasoning (implemented)
-- Phase 5 — Required-case validation
-- Phase 6 — UI polish and generalization
-- Phase 7 — Deployment and demo
+Development used incremental, meaningful commits covering the application scaffold, PDF evidence ingestion, structured fact extraction, deterministic normalization, cross-document relation reasoning, real-data validation, and frontend polish.
