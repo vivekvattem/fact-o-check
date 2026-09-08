@@ -25,10 +25,9 @@ The frontend is deployed on Vercel, the FastAPI backend is deployed on Render, a
 
 ## Demo Video
 
-The final demo is recorded, trimmed to under three minutes, and ready for submission.
+▶️ **[Watch the Fact-O-Check Demo](https://youtu.be/j19lh4kUtAw)**
 
-Final demo video:
-TODO: replace with the final public/shareable video URL before submission.
+The demo is under 3 minutes and shows the end-to-end Fact-O-Check workflow, including evidence-grounded facts, normalization, cross-document comparison, corroboration, reconciliation, and review handling.
 
 ## What It Does
 
