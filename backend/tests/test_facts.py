@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 import httpx
 import pytest
@@ -371,6 +372,35 @@ async def test_openai_adapter_without_network(monkeypatch, mode):
         with pytest.raises(ExtractorError) as caught:
             await extractor.extract(window)
         assert "secret" not in str(caught.value)
+
+
+async def test_provider_http_error_is_safely_logged(monkeypatch, caplog):
+    async def handle(request):
+        return httpx.Response(
+            401,
+            json={"error": {"type": "authentication_error", "message": "Invalid key fake-key"}},
+        )
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    extractor = OpenRouterFactExtractor(
+        settings(openrouter_api_key="fake-key", llm_model="vendor/model")
+    )
+    with (
+        caplog.at_level(logging.WARNING),
+        pytest.raises(ExtractorError, match="provider_unavailable"),
+    ):
+        await extractor.extract((EvidenceContext("smoke", 1, "Synthetic evidence."),))
+
+    assert "provider=openrouter" in caplog.text
+    assert "status_code=401" in caplog.text
+    assert "error_type=authentication_error" in caplog.text
+    assert "Invalid key [REDACTED]" in caplog.text
+    assert "fake-key" not in caplog.text
 
 
 def test_strict_provider_schema():
