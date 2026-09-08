@@ -40,6 +40,23 @@ Traditional PDF search and RAG retrieve passages. Fact-O-Check instead:
 - compares facts across documents; and
 - explains agreements, contextual differences, contradictions, and ambiguous cases.
 
+## Pipeline
+
+Fact-O-Check turns uploaded PDFs into evidence-backed structured facts, normalizes them, compares them across documents, and explains how those facts relate.
+
+```mermaid
+flowchart LR
+    A[PDF Upload] --> B[Evidence Extraction]
+    B --> C[Structured Fact Extraction]
+    C --> D[Deterministic Normalization]
+    D --> E[Candidate Matching]
+    E --> F[Cross-document Reasoning]
+    F --> G[Relation + Explanation]
+
+    F -. ambiguous semantic cases .-> H[LLM Semantic Fallback]
+    H --> G
+```
+
 ## Core Features
 
 - Arbitrary PDF upload
@@ -68,8 +85,6 @@ Relationship labels:
 - `RECONCILABLE`
 - `UNRELATED`
 - `NEEDS_REVIEW`
-
-> Deterministic checks decide clear numerical relationships; LLM reasoning is reserved for ambiguous semantic context.
 
 ## Verified Assignment Cases
 
@@ -101,67 +116,27 @@ In the verified Delhivery case, `₹1,266Mn` was incorrectly associated with “
 
 Evidence provenance remained valid, but metric/value association failed because PDF reading order differed from the visual layout. Bounding-box context is now passed to extraction, and ambiguous outputs may remain `NEEDS_REVIEW`. The issue is not fully solved; stronger table and layout reconstruction remains future work.
 
-## Approach
-
-### Evidence first
-
-PDF pages and blocks become stable evidence before interpretation.
-
-### Structured extraction
-
-Schema-constrained LLM extraction produces typed fact candidates whose evidence references are validated before persistence.
-
-### Deterministic normalization
-
-Numbers, currencies, percentages, units, dates, fiscal periods, and conservative subjects and predicates are normalized. Raw values remain preserved.
-
-### Candidate matching
-
-Only likely comparable facts are evaluated across documents.
-
-### Deterministic-first reasoning
-
-Typed tolerances and context checks handle clear cases without an LLM call.
-
-### Semantic fallback
-
-LLM reasoning is used only when deterministic rules cannot safely resolve semantic meaning.
-
-### Review instead of guessing
-
-Ambiguous cases become `NEEDS_REVIEW` rather than unsupported conclusions.
-
 ## Architecture
 
 ```text
-React + TypeScript + Vite
-        |
-        v
-FastAPI REST API
-        |
-        +--> PyMuPDF Evidence Extraction
-        |
-        +--> Structured Fact Extraction
-        |       |
-        |       +--> OpenRouter / OpenAI-compatible provider
-        |
-        +--> Deterministic Normalization
-        |
-        +--> Candidate Generation
-        |
-        +--> Deterministic Relation Reasoning
-        |       |
-        |       +--> Semantic fallback when needed
-        |
-        v
-MongoDB / Beanie
-    - documents
-    - evidence_chunks
-    - facts
-    - fact_relations
+React + TypeScript + Vite frontend
+                 |
+                 v
+          FastAPI REST API
+           /            \
+          v              v
+PyMuPDF + domain      OpenRouter / OpenAI-compatible
+services              provider (extraction + fallback)
+          \              /
+           v            v
+           MongoDB + Beanie
+           - documents
+           - evidence_chunks
+           - facts
+           - fact_relations
 ```
 
-Uploading creates evidence without automatically invoking an LLM. Extraction, normalization, and comparison remain explicit operations.
+The frontend invokes explicit upload, extraction, normalization, and comparison operations through FastAPI. Domain services validate provenance and apply deterministic logic; provider calls are limited to structured extraction and ambiguous semantic fallback. Beanie persists documents, evidence chunks, facts, and cross-document relations in MongoDB.
 
 ## Setup & Run
 
