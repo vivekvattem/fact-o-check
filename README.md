@@ -241,7 +241,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The frontend development server runs at `http://localhost:5173` and uses `VITE_API_URL` for the backend origin.
+The frontend development server runs at `http://localhost:5173` and uses `VITE_API_BASE_URL` for the backend origin.
 
 ## Environment Variables
 
@@ -274,7 +274,7 @@ LLM and extraction:
 
 Frontend:
 
-- `VITE_API_URL`
+- `VITE_API_BASE_URL`
 
 ## API Overview
 
@@ -307,7 +307,7 @@ Frontend:
 
 ## Testing
 
-The latest verified checkpoint has 139 passing backend tests. The frontend lint and production build checks also pass.
+The latest verified checkpoint has 142 passing backend tests. The frontend lint and production build checks also pass.
 
 ```bash
 cd backend
@@ -341,6 +341,73 @@ fact-o-check/
 ├── sample_data/
 └── README.md
 ```
+
+## Deployment
+
+Deployment is configured as three independent services: MongoDB Atlas for persistence, a Render Web Service for the FastAPI backend, and a Vercel project for the Vite frontend. No live service URLs or credentials are committed.
+
+### MongoDB Atlas
+
+Create an Atlas cluster, database user, and network-access rule that permits the Render service to connect. Set `MONGODB_URI` to the Atlas `mongodb+srv://` connection string and set `MONGODB_DB_NAME` to the target database. The URI and database name are read entirely from the environment; never place the Atlas password in a committed file.
+
+### Render Backend
+
+Create a Python Web Service with these settings:
+
+- **Root Directory:** `backend`
+- **Build Command:** `pip install .`
+- **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Health Check Path:** `/health`
+
+Set these environment variables in Render:
+
+- `APP_ENV=production`
+- `APP_NAME`
+- `API_PREFIX`
+- `MONGODB_URI`
+- `MONGODB_DB_NAME`
+- `CORS_ORIGINS` — comma-separated explicit origins, such as the production Vercel origin and `http://localhost:5173` when local frontend access is required; `*` is rejected
+- `MAX_UPLOAD_SIZE_BYTES`
+- `LLM_PROVIDER`
+- `LLM_MODEL`
+- `LLM_API_KEY` when using OpenAI, or `OPENROUTER_API_KEY` when using OpenRouter
+- `OPENROUTER_BASE_URL`, `OPENROUTER_HTTP_REFERER`, and `OPENROUTER_X_TITLE` when applicable
+- the `LLM_TIMEOUT_SECONDS` and `EXTRACTION_*` limits when overriding their defaults
+
+Render supplies `PORT`; the start command binds Uvicorn to that port on `0.0.0.0`. Use `/health` for process health and `/ready` when database readiness must also be confirmed.
+
+### Vercel Frontend
+
+Create a Vite project with these settings:
+
+- **Root Directory:** `frontend`
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
+- **Environment Variable:** `VITE_API_BASE_URL=https://<render-backend>`
+
+`frontend/vercel.json` rewrites browser requests to `index.html`, so `/`, `/overview`, document and fact detail routes, and relationship routes can be opened or refreshed directly without a Vercel 404. The Vite development fallback remains `http://localhost:8000`.
+
+### Deployment limitations
+
+- Original PDF bytes are parsed in memory and are not retained after ingestion. Document metadata plus extracted evidence, facts, and relationships persist in MongoDB, but reopening the original PDF requires future object storage.
+- Upload, fact extraction, normalization, and comparison run synchronously in request workflows. Large documents can approach host or client request timeouts; this release does not add background queues.
+- Uploads remain bounded by `MAX_UPLOAD_SIZE_BYTES`, provider calls by `LLM_TIMEOUT_SECONDS`, and extraction work by the `EXTRACTION_*` limits.
+- OCR and durable source-file storage are not implemented.
+
+### Production checklist
+
+- [ ] MongoDB Atlas is reachable from Render.
+- [ ] Backend `GET /health` succeeds.
+- [ ] Backend `GET /ready` confirms the database connection.
+- [ ] The Vercel frontend loads with the Render API base URL.
+- [ ] The frontend can list documents.
+- [ ] A bounded PDF upload succeeds.
+- [ ] Fact extraction works with the configured provider.
+- [ ] Normalization works.
+- [ ] Cross-document comparison works.
+- [ ] Relationships load with evidence provenance.
+- [ ] Direct route refreshes resolve to the SPA.
+- [ ] Browser responses, logs, and committed files expose no secrets.
 
 ## Limitations & Next Steps
 

@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     def normalize_llm_provider(cls, value: str) -> str:
         return value.strip().lower()
 
+    @field_validator("cors_origins")
+    @classmethod
+    def validate_cors_origins(cls, value: str) -> str:
+        origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+        if not origins:
+            raise ValueError("must contain at least one origin")
+        if "*" in origins:
+            raise ValueError("must list explicit origins when credentials are enabled")
+        return ",".join(origins)
+
     @field_validator("openrouter_base_url")
     @classmethod
     def validate_openrouter_base_url(cls, value: str) -> str:
