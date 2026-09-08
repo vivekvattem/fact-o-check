@@ -12,6 +12,7 @@ import { api } from "../api/client";
 import { CompareFactsButton } from "../components/CompareFactsButton";
 import { ExtractFactsButton } from "../components/ExtractFactsButton";
 import { LoadingState } from "../components/LoadingState";
+import { DocumentWorkflow } from "../components/DocumentWorkflow";
 import type { DocumentRecord, EvidencePage } from "../types/api";
 
 const PAGE_SIZE = 20;
@@ -29,6 +30,7 @@ export function DocumentDetailPage() {
   const [evidence, setEvidence] = useState<EvidencePage | null>(null);
   const [selectedPage, setSelectedPage] = useState<number | undefined>();
   const [offset, setOffset] = useState(0);
+  const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,13 +132,14 @@ export function DocumentDetailPage() {
         </div>
       </section>
 
+      <DocumentWorkflow key={documentId} document={document} revision={revision} onChange={() => setRevision(value => value + 1)} />
       <section className="detail-section action-panel panel" aria-labelledby="actions-heading">
         <div>
           <span className="eyebrow">Knowledge actions</span>
           <h2 id="actions-heading">Fact extraction</h2>
           <p>Create structured facts from this document’s stored evidence.</p>
         </div>
-        <ExtractFactsButton key={documentId} documentId={documentId} status={document.status} />
+        <ExtractFactsButton key={documentId} documentId={documentId} status={document.status} onComplete={() => setRevision(value => value + 1)} />
       </section>
 
       <section className="detail-section action-panel panel" aria-labelledby="comparison-heading">
@@ -145,7 +148,7 @@ export function DocumentDetailPage() {
           <h2 id="comparison-heading">Fact comparison</h2>
           <p>Compare this document’s normalized facts with likely matches from other sources.</p>
         </div>
-        <CompareFactsButton key={`compare-${documentId}`} documentId={documentId} />
+        <CompareFactsButton key={`compare-${documentId}`} documentId={documentId} onComplete={() => setRevision(value => value + 1)} />
       </section>
 
       <section className="evidence-section detail-section" aria-labelledby="evidence-heading">

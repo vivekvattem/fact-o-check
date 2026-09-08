@@ -77,11 +77,14 @@ export function FactsPage() {
           <tbody>{data?.items.map(fact => <tr key={fact.id}>
             <td data-label="Fact"><Link className="fact-link" to={`/facts/${fact.id}`}>
               <strong>{fact.subject}</strong><span>{fact.predicate}</span>
-            </Link></td>
+            </Link><div className="fact-chips">{fact.value_type && <span className="rule-chip">{fact.value_type.toLowerCase()}</span>}
+              {fact.normalized_unit && <span className="rule-chip">{fact.normalized_unit}</span>}
+              {hasWarnings(fact) && <span className="confidence confidence--medium">Normalization warning</span>}
+            </div></td>
             <td data-label="Value"><div className="fact-value">
               <strong>{String(fact.raw_value)}{fact.raw_unit ? ` ${fact.raw_unit}` : ""}</strong>
               {fact.normalized_value !== null && <span>
-                {String(fact.normalized_value)} {fact.normalized_unit}
+                Normalized: {String(fact.normalized_value)} {fact.normalized_unit}
               </span>}
             </div></td>
             <td data-label="Context"><div className="context-list">{contextItems(fact).length ?
@@ -96,7 +99,7 @@ export function FactsPage() {
           </tr>)}</tbody>
         </table></div>
         {data?.items.length === 0 && <EmptyState icon={ScanSearch} title="No facts found"
-          description="Extract facts from a processed document or adjust the current filters."
+          description={query ? "No facts match these filters. Try clearing or adjusting a filter." : "Extract facts from a document to begin building the knowledge layer."}
           action={<Link className="button button--secondary" to="/documents">Browse documents</Link>} />}
         {(data?.total ?? 0) > 0 && <nav className="pagination table-pagination" aria-label="Facts pagination">
           <span>Showing {offset + 1}–{Math.min(offset + (data?.items.length ?? 0), data?.total ?? 0)} of {data?.total ?? 0}</span><div>
@@ -108,6 +111,11 @@ export function FactsPage() {
       </>}
     </section>
   </div>;
+}
+
+function hasWarnings(fact: FactRecord) {
+  const normalization = fact.metadata.normalization as { warnings?: unknown[] } | undefined;
+  return Boolean(normalization?.warnings?.length);
 }
 
 function ConfidenceBadge({ value }: { value: number | null }) {

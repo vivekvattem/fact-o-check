@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { LoadingState } from "../components/LoadingState";
+import { ContextDetails } from "../components/ContextDetails";
 import type { FactRecord } from "../types/api";
 
 export function FactDetailPage() {
@@ -128,5 +129,5 @@ function FactField({ label, value, unit, emphasis }: {
   const display = value === null || value === undefined ? "—" :
     typeof value === "object" ? JSON.stringify(value) : String(value);
   return <div><dt>{label}</dt><dd className={emphasis ? "detail-value--emphasis" : undefined}>
-    {display}{unit ? ` ${unit}` : ""}</dd></div>;
+    {typeof value === "object" && value !== null ? <ContextDetails value={value} /> : display}{unit ? ` ${unit}` : ""}</dd></div>;
 }

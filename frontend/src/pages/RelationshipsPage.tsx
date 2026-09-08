@@ -54,7 +54,7 @@ export function RelationshipsPage() {
 
   const sourceFilter = params.get("document_id");
   const cards = useMemo(
-    () => summaryTypes.map(item => ({ ...item, count: counts[item.type] ?? 0 })),
+    () => summaryTypes.map(item => ({ ...item, count: counts[item.type] ?? null })),
     [counts],
   );
 
@@ -72,14 +72,14 @@ export function RelationshipsPage() {
 
     <section className="relationship-summary" aria-label="Relationship totals">
       {cards.map(card => <div className="panel relationship-metric" key={card.type}>
-        <span>{card.label}</span><strong>{loading ? "—" : card.count}</strong>
+        <span>{card.label}</span><strong>{loading || error ? "—" : card.count ?? "—"}</strong>
       </div>)}
     </section>
 
     <div className="relationship-toolbar">
-      <div className="tabs" role="tablist" aria-label="Relationship filters">
-        {filters.map(filter => <button key={filter.label} type="button" role="tab"
-          aria-selected={activeFilter.label === filter.label}
+      <div className="tabs" role="group" aria-label="Relationship filters">
+        {filters.map(filter => <button key={filter.label} type="button"
+          aria-pressed={activeFilter.label === filter.label}
           className={activeFilter.label === filter.label ? "tab tab--active" : "tab"}
           onClick={() => selectFilter(filter.type)}>{filter.label}</button>)}
       </div>
@@ -100,9 +100,24 @@ export function RelationshipsPage() {
         !error && data?.items.length ? <div className="relationship-list">
           {data.items.map(relation => <RelationCard relation={relation} key={relation.id} />)}
         </div> : !error && <EmptyState icon={GitCompareArrows}
-          title="No relationships have been generated yet"
-          description="Compare normalized facts from a document to create evidence-grounded relationships." />}
+          title={activeType === "CONTRADICTS" ? "No contradictions found" : activeType === "NEEDS_REVIEW" ?
+            "Nothing needs review" : "No relationships here yet"}
+          description={sourceFilter || params.has("subject") || params.has("min_confidence") ?
+            "No relationships match these filters. Try clearing a filter or compare another document." :
+            activeType === "CONTRADICTS" ? "No defensible contradictions were found in the current validated dataset." :
+            activeType === "NEEDS_REVIEW" ? "No ambiguous relationships need review right now." :
+            "Compare facts across documents to start discovering agreements and conflicts."}
+          action={<Link className="button button--secondary" to="/documents">Browse documents</Link>} />}
     </section>
+    {!loading && !error && data && data.total > data.limit && <nav className="pagination" aria-label="Relationship pagination">
+      <span>Showing {data.items.length ? data.offset + 1 : 0}–{data.offset + data.items.length} of {data.total}</span>
+      <div>{["Previous", "Next"].map((label, index) => <button key={label} type="button"
+        className="button button--secondary"
+        disabled={index === 0 ? data.offset === 0 : data.offset + data.limit >= data.total}
+        onClick={() => { const next = new URLSearchParams(params);
+          next.set("offset", String(Math.max(0, data.offset + (index === 0 ? -data.limit : data.limit))));
+          setParams(next); }}>{label}</button>)}</div>
+    </nav>}
   </div>;
 }
 
@@ -121,6 +136,8 @@ function RelationCard({ relation }: { relation: RelationRecord }) {
     <p className="relationship-explanation">
       {relation.explanation ?? "No explanation available."}
     </p>
+    {relation.relation_type === "NEEDS_REVIEW" && <p className="review-guidance">
+      Next step: inspect both sources and check missing or ambiguous context.</p>}
     <footer>
       <span>{relation.confidence === null ? "Unknown" :
         `${Math.round(relation.confidence * 100)}%`} confidence</span>
@@ -131,6 +148,7 @@ function RelationCard({ relation }: { relation: RelationRecord }) {
 
 function FactValue({ label, fact }: { label: string; fact: RelationRecord["fact_a"] }) {
   return <div><span>{label}</span>
+    <p className="comparison-subject">{fact.subject}<small>{fact.predicate}</small></p>
     <strong>{String(fact.raw_value)}{fact.raw_unit ? ` ${fact.raw_unit}` : ""}</strong>
     <small>{fact.source_document?.original_filename ?? "Unknown source"} · Page
       {fact.page_numbers.length === 1 ? "" : "s"} {fact.page_numbers.join(", ") || "—"}</small>

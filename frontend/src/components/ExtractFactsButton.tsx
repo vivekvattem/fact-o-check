@@ -5,8 +5,8 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { DocumentStatus, ExtractionSummary } from "../types/api";
 
-export function ExtractFactsButton({ documentId, status }: {
-  documentId: string; status: DocumentStatus;
+export function ExtractFactsButton({ documentId, status, onComplete }: {
+  documentId: string; status: DocumentStatus; onComplete?: () => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<ExtractionSummary | null>(null);
@@ -18,6 +18,7 @@ export function ExtractFactsButton({ documentId, status }: {
     setSummary(null);
     try {
       setSummary(await api.documents.extractFacts(documentId));
+      onComplete?.();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Fact extraction failed.");
     } finally {

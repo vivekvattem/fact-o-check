@@ -11,6 +11,7 @@ import type {
   RelationComparisonSummary,
   RelationPage,
   RelationRecord,
+  NormalizationSummary,
 } from "../types/api";
 
 const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -67,6 +68,9 @@ export const api = {
     get: (relationId: string) => request<RelationRecord>(`/api/relations/${relationId}`),
   },
   documents: {
+    normalizeFacts: (documentId: string) => request<NormalizationSummary>(
+      `/api/documents/${documentId}/normalize-facts`, { method: "POST" }, 200_000,
+    ),
     extractFacts: (documentId: string) => request<ExtractionSummary>(
       `/api/documents/${documentId}/extract-facts`, { method: "POST" }, 200_000,
     ),

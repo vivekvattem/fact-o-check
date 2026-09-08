@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { RelationComparisonSummary } from "../types/api";
 
-export function CompareFactsButton({ documentId }: { documentId: string }) {
+export function CompareFactsButton({ documentId, onComplete }: { documentId: string; onComplete?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<RelationComparisonSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +16,7 @@ export function CompareFactsButton({ documentId }: { documentId: string }) {
     setSummary(null);
     try {
       setSummary(await api.documents.compareFacts(documentId));
+      onComplete?.();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Fact comparison failed.");
     } finally {

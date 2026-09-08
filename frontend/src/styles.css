@@ -167,7 +167,7 @@ button {
 }
 
 .page {
-  animation: enter 280ms ease both;
+  min-width: 0;
 }
 
 @keyframes enter {
@@ -1371,4 +1371,88 @@ select { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   .button, .document-table tbody tr { transition: none; }
+}
+
+/* Final demo integration: calm surfaces and evidence-first comparisons. */
+.nav__link--active { box-shadow: inset 3px 0 #b9dec6; background: #2b3d32; }
+.sidebar__footer p { color: #aeb9b2; line-height: 1.6; }
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; transform: translateY(-160%); border-radius: 8px; padding: 12px 18px; background: white; color: var(--green); }
+.skip-link:focus { transform: translateY(0); }
+.metrics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.metric-card { flex-wrap: wrap; gap: 14px; box-shadow: 0 3px 12px #22352a04; }
+.metric-card__copy { min-width: 0; }
+.metric-card strong { font-variant-numeric: tabular-nums; }
+.metric-card, .relationship-card, .relationship-metric, .tab { transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
+.metric-card:hover, .relationship-card:hover { box-shadow: 0 5px 20px #22352a08; }
+.status-dot--checking { background: #9d8a58; }
+.readiness-note { display: grid; gap: 5px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 12px; }
+.readiness-note span { color: var(--muted); line-height: 1.5; }
+.overview-relations { padding: 24px; margin-top: 20px; }
+.overview-relations .relationship-summary { margin-bottom: 8px; }
+.overview-relations .relationship-metric { border: 1px solid var(--line); border-radius: 10px; gap: 10px; text-decoration: none; }
+.overview-relations .relationship-metric:hover { background: var(--green-light); }
+.workflow-panel { margin-top: 24px; padding: 22px; }
+.workflow-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; padding: 0; margin: 0; list-style: none; }
+.workflow-steps li { display: flex; gap: 10px; align-items: flex-start; }
+.workflow-number { display: grid; place-items: center; flex: 0 0 28px; height: 28px; background: var(--green-light); border-radius: 50%; color: var(--green); font-size: 12px; font-weight: 700; }
+.workflow-steps strong { display: block; font-size: 13px; }
+.workflow-steps small { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+.workflow-normalize { display: flex; justify-content: space-between; gap: 22px; align-items: center; border-top: 1px solid var(--line); padding-top: 16px; margin-top: 20px; }
+.workflow-normalize p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.workflow-normalize .button { flex-shrink: 0; }
+.fact-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.fact-chips .confidence { font-size: 10px; font-weight: 500; }
+.relationship-list { gap: 16px; }
+.relationship-panel:has(.relationship-list) { border: 0; background: transparent; box-shadow: none; overflow: visible; }
+.relationship-card, .relationship-card:last-child { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.relationship-values > div { background: #f3f6f2; min-width: 0; align-self: stretch; }
+.relationship-values strong { font-size: 18px; line-height: 1.5; }
+.relationship-values small { overflow-wrap: anywhere; line-height: 1.6; }
+.comparison-subject { margin: 4px 0 9px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.comparison-subject small { display: block; margin-top: 4px; font-weight: 400; }
+.relationship-versus { border: 1px solid var(--line); border-radius: 50%; padding: 8px; }
+.review-guidance { border-left: 3px solid #bca36b; border-radius: 0 8px 8px 0; padding: 12px 16px; background: #f7f2e6; color: #705b2e; font-size: 12px; line-height: 1.7; }
+.review-guidance p { margin: 6px 0 0; }
+.relation-fact { min-width: 0; }
+.relation-fact h2, .relation-fact__predicate, .relationship-card__heading, .source-panel { overflow-wrap: anywhere; }
+.relation-evidence, .fact-detail .evidence-card { background: #f0f5ef; border-radius: 10px; padding: 18px; border: 1px solid #d8e3d7; }
+.relation-evidence blockquote { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.75; color: #35473b; }
+.relation-evidence blockquote span { font-size: 11px; }
+.decision-summary { display: grid; justify-items: center; gap: 8px; }
+.decision-summary h2 { margin: 0; }
+.decision-summary strong { color: var(--muted); font-size: 12px; }
+.decision-summary .relation-badge { font-size: 12px; padding: 8px 14px; }
+.relation-decision > p { text-align: center; max-width: 720px; margin: 20px auto; }
+.reasoning-grid section { min-width: 0; border-top: 1px solid var(--line); }
+.reasoning-grid h3 { font-size: 13px; }
+.context-details { margin: 0; display: grid; gap: 10px; }
+.context-details > div { display: grid; grid-template-columns: minmax(90px, .8fr) minmax(0, 1fr); gap: 12px; }
+.context-details dt { text-transform: capitalize; color: var(--muted); font-size: 12px; }
+.context-details dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; line-height: 1.6; }
+.context-details-list { margin: 0; padding-left: 16px; }
+.reasoning-disclosure { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; }
+.reasoning-disclosure summary { cursor: pointer; font-size: 13px; color: var(--green); padding: 6px 0; }
+.reasoning-disclosure > .context-details { margin-top: 16px; }
+.source-panel > div { min-width: 0; }
+@media (max-width: 1200px) {
+  .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .workflow-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-relations .relationship-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .workflow-normalize { align-items: stretch; flex-direction: column; gap: 12px; }
+  .workflow-panel, .overview-relations { padding: 18px; }
+  .relation-evidence { padding: 12px; }
+  .relationship-card { padding: 18px; }
+  .context-details > div { grid-template-columns: 1fr; gap: 3px; }
+  .relationship-values strong { font-size: 17px; }
+  .pagination { flex-wrap: wrap; gap: 12px; }
+}
+@media (max-width: 420px) {
+  .metrics-grid, .overview-relations .relationship-summary { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }

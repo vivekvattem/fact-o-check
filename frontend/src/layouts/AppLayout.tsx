@@ -6,7 +6,7 @@ import {
   ScanSearch,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 const navigation = [
@@ -18,10 +18,22 @@ const navigation = [
 
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    closeButton.current?.focus();
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") { setMenuOpen(false); menuButton.current?.focus(); }
+    }
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [menuOpen]);
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar${menuOpen ? " sidebar--open" : ""}`}>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <aside id="workspace-navigation" className={`sidebar${menuOpen ? " sidebar--open" : ""}`}>
         <div className="brand">
           <div className="brand__mark" aria-hidden="true">
             F
@@ -32,6 +44,7 @@ export function AppLayout() {
           </div>
           <button
             className="icon-button sidebar__close"
+            ref={closeButton}
             type="button"
             aria-label="Close navigation"
             onClick={() => setMenuOpen(false)}
@@ -57,8 +70,8 @@ export function AppLayout() {
         </nav>
 
         <div className="sidebar__footer">
-          <span className="phase-pill">Phase 4</span>
-          <p>Cross-document fact reasoning</p>
+          <span className="phase-pill">Evidence workspace</span>
+          <p>Facts, grounded in evidence.</p>
         </div>
       </aside>
 
@@ -75,6 +88,9 @@ export function AppLayout() {
         <header className="mobile-header">
           <button
             className="icon-button"
+            ref={menuButton}
+            aria-expanded={menuOpen}
+            aria-controls="workspace-navigation"
             type="button"
             aria-label="Open navigation"
             onClick={() => setMenuOpen(true)}
@@ -84,7 +100,7 @@ export function AppLayout() {
           <strong>Fact-O-Check</strong>
           <span />
         </header>
-        <main className="main-content" id="main-content">
+        <main className="main-content" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

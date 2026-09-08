@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { LoadingState } from "../components/LoadingState";
+import { ContextDetails } from "../components/ContextDetails";
 import type { FactRecord, RelationRecord } from "../types/api";
 import { RelationBadge } from "./RelationshipsPage";
 
@@ -14,6 +15,8 @@ export function RelationDetailPage() {
 
   useEffect(() => {
     let active = true;
+    setRelation(null);
+    setError(null);
     api.relations.get(relationId).then(result => { if (active) setRelation(result); })
       .catch(reason => {
         if (active) setError(
@@ -44,16 +47,23 @@ export function RelationDetailPage() {
         <FactPanel label="Fact B" fact={relation.fact_b} />
       </section>
       <section className="panel fact-section relation-decision" aria-labelledby="relation-heading">
-        <div className="section-heading"><div><span className="eyebrow">Decision</span>
-          <h2 id="relation-heading">Relation</h2></div>
+        <div className="decision-summary"><span className="eyebrow">Evidence-based assessment</span>
+          <h2 id="relation-heading"><RelationBadge type={relation.relation_type} /></h2>
           <strong>{relation.confidence === null ? "Unknown" :
             `${Math.round(relation.confidence * 100)}%`} confidence</strong></div>
         <p>{relation.explanation ?? "No explanation available."}</p>
-        <dl className="reasoning-grid">
-          {Object.entries(relation.reasoning_details).map(([key, value]) => <div key={key}>
-            <dt>{key.replaceAll("_", " ")}</dt><dd>{display(value)}</dd>
-          </div>)}
-        </dl>
+        {relation.relation_type === "NEEDS_REVIEW" && <aside className="review-guidance">
+          <strong>A closer look is needed</strong>
+          <p>Check each source’s metric label, period, geography, and scope. Missing context may explain the difference.</p>
+          {relation.reasoning_details.needs_review_reason != null && <ContextDetails value={relation.reasoning_details.needs_review_reason} />}
+        </aside>}
+        <div className="reasoning-grid">
+          <section><h3>Context compatibility</h3><ContextDetails value={relation.reasoning_details.context} /></section>
+          <section><h3>Value comparison</h3><ContextDetails value={relation.reasoning_details.value_comparison} /></section>
+        </div>
+        <details className="reasoning-disclosure"><summary>All comparison checks</summary>
+          <ContextDetails value={relation.reasoning_details} />
+        </details>
       </section>
     </>}
   </div>;
@@ -72,10 +82,13 @@ function FactPanel({ label, fact }: { label: string; fact: FactRecord }) {
       <Field label="As of" value={fact.as_of_date} />
       <Field label="Geography" value={fact.geography} />
       <Field label="Scope" value={fact.scope} />
-      <Field label="Source" value={fact.source_document?.original_filename} />
+      <div><dt>Source</dt><dd><Link to={`/documents/${fact.document_id}`}>{fact.source_document?.original_filename ?? "Inspect source document"}</Link></dd></div>
       <Field label="Pages" value={fact.page_numbers.join(", ") || null} />
     </dl>
+    <Link className="back-link" to={`/facts/${fact.id}`}>Inspect full fact & context</Link>
     <div className="relation-evidence"><h3>Evidence</h3>
+      <p className="muted-copy">Linked source text · inspect labels and context to verify the claim.</p>
+      {fact.evidence.length === 0 && <p className="muted-copy">No source evidence is available for this fact.</p>}
       {fact.evidence.map(chunk => <blockquote key={chunk.id}>
         <span>Page {chunk.page_number}</span>{chunk.text}
       </blockquote>)}
