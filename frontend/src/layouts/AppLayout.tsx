@@ -7,10 +7,10 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 
 const navigation = [
-  { label: "Overview", to: "/", icon: LayoutDashboard, end: true },
+  { label: "Overview", to: "/overview", icon: LayoutDashboard, end: true },
   { label: "Documents", to: "/documents", icon: Files },
   { label: "Facts", to: "/facts", icon: ScanSearch },
   { label: "Relationships", to: "/relationships", icon: GitCompareArrows },
@@ -35,13 +35,15 @@ export function AppLayout() {
       <a className="skip-link" href="#main-content">Skip to content</a>
       <aside id="workspace-navigation" className={`sidebar${menuOpen ? " sidebar--open" : ""}`}>
         <div className="brand">
-          <div className="brand__mark" aria-hidden="true">
-            F
-          </div>
-          <div>
-            <strong>Fact-O-Check</strong>
-            <span>Evidence intelligence</span>
-          </div>
+          <Link className="brand__home" to="/" onClick={() => setMenuOpen(false)}>
+            <div className="brand__mark" aria-hidden="true">
+              F
+            </div>
+            <div>
+              <strong>Fact-O-Check</strong>
+              <span>Evidence intelligence</span>
+            </div>
+          </Link>
           <button
             className="icon-button sidebar__close"
             ref={closeButton}
@@ -97,7 +99,7 @@ export function AppLayout() {
           >
             <Menu size={20} />
           </button>
-          <strong>Fact-O-Check</strong>
+          <Link className="mobile-brand" to="/">Fact-O-Check</Link>
           <span />
         </header>
         <main className="main-content" id="main-content" tabIndex={-1}>

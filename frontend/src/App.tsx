@@ -5,16 +5,17 @@ import { DocumentDetailPage } from "./pages/DocumentDetailPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { FactsPage } from "./pages/FactsPage";
 import { FactDetailPage } from "./pages/FactDetailPage";
+import { HomePage } from "./pages/HomePage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RelationshipsPage } from "./pages/RelationshipsPage";
 import { RelationDetailPage } from "./pages/RelationDetailPage";
 
 const router = createBrowserRouter([
+  { path: "/", element: <HomePage /> },
   {
-    path: "/",
     element: <AppLayout />,
     children: [
-      { index: true, element: <OverviewPage /> },
+      { path: "overview", element: <OverviewPage /> },
       { path: "documents", element: <DocumentsPage /> },
       { path: "documents/:documentId", element: <DocumentDetailPage /> },
       { path: "facts", element: <FactsPage /> },
