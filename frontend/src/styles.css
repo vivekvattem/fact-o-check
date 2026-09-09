@@ -409,6 +409,23 @@ button {
   animation: pulse 1s ease-in-out infinite;
 }
 
+.status-panel__connection-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #e6e9e3;
+  padding: 14px 0 2px;
+  color: #68726c;
+  font-size: 11px;
+}
+
+.status-panel__connection-note .button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
 @keyframes pulse {
   50% { opacity: 0.35; }
 }

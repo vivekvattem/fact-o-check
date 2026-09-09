@@ -13,13 +13,12 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
+import { useBackendReadiness, type ConnectionState } from "../hooks/useBackendReadiness";
 import type { DocumentRecord } from "../types/api";
 
-type ConnectionState = "checking" | "connected" | "unavailable";
-
 export function OverviewPage() {
-  const [apiStatus, setApiStatus] = useState<ConnectionState>("checking");
-  const [databaseStatus, setDatabaseStatus] = useState<ConnectionState>("checking");
+  const { status: apiStatus, databaseStatus, retry, isChecking } = useBackendReadiness();
+  const [dataLoading, setDataLoading] = useState(true);
   const [documentCount, setDocumentCount] = useState<number | null>(null);
   const [factCount, setFactCount] = useState<number | null>(null);
   const [relationCount, setRelationCount] = useState<number | null>(null);
@@ -27,12 +26,12 @@ export function OverviewPage() {
   const [recentDocuments, setRecentDocuments] = useState<DocumentRecord[]>([]);
 
   useEffect(() => {
+    if (apiStatus !== "connected") return;
     let active = true;
 
-    async function checkConnections() {
-      const connectionResults = await Promise.allSettled([
-        api.health(),
-        api.ready(),
+    async function loadDashboardData() {
+      setDataLoading(true);
+      const results = await Promise.allSettled([
         api.documents.list(),
         api.facts.list({ limit: "1" }),
         api.relations.list({ limit: "1" }),
@@ -41,27 +40,26 @@ export function OverviewPage() {
         ),
       ]);
       if (!active) return;
-      const ready = connectionResults[1].status === "fulfilled";
-      setApiStatus(ready ? "connected" : "unavailable");
-      setDatabaseStatus(ready ? "connected" : "unavailable");
-      if (connectionResults[2].status === "fulfilled") {
-        setDocumentCount(connectionResults[2].value.length);
-        setRecentDocuments(connectionResults[2].value.slice(0, 3));
+      if (results[0].status === "fulfilled") {
+        setDocumentCount(results[0].value.length);
+        setRecentDocuments(results[0].value.slice(0, 3));
       }
-      if (connectionResults[3].status === "fulfilled") setFactCount(connectionResults[3].value.total);
-      if (connectionResults[4].status === "fulfilled") setRelationCount(connectionResults[4].value.total);
-      setBreakdown(connectionResults.slice(5).map(result =>
+      if (results[1].status === "fulfilled") setFactCount(results[1].value.total);
+      if (results[2].status === "fulfilled") setRelationCount(results[2].value.total);
+      setBreakdown(results.slice(3).map(result =>
         result.status === "fulfilled" && "total" in result.value ? result.value.total : null));
+      setDataLoading(false);
     }
 
-    void checkConnections();
+    void loadDashboardData();
     return () => {
       active = false;
     };
-  }, []);
+  }, [apiStatus]);
 
-  const systemStatus = [apiStatus, databaseStatus].includes("unavailable") ? "error" :
-    [apiStatus, databaseStatus].includes("checking") ? "checking" : "ok";
+  const systemStatus = apiStatus === "unavailable" ? "error" :
+    isChecking ? "checking" : "ok";
+  const dashboardLoading = isChecking || (apiStatus === "connected" && dataLoading);
   const metrics = [
     { label: "Documents", value: documentCount, icon: Files, hint: "Sources in your library" },
     { label: "Facts", value: factCount, icon: ScanSearch, hint: "Extracted knowledge records" },
@@ -84,7 +82,7 @@ export function OverviewPage() {
               <Icon size={18} strokeWidth={1.8} />
             </div>
             <div className="metric-card__copy"><span>{label}</span><small>{hint}</small></div>
-            <strong>{value ?? "—"}</strong>
+            <strong>{value ?? (dashboardLoading ? "…" : "—")}</strong>
           </article>
         ))}
       </section>
@@ -101,6 +99,14 @@ export function OverviewPage() {
           </div>
           <StatusRow icon={Server} label="Backend API" status={apiStatus} />
           <StatusRow icon={Database} label="MongoDB" status={databaseStatus} />
+          {(isChecking || apiStatus === "unavailable") &&
+            <div className="status-panel__connection-note">
+              <span>The hosted backend may need a few seconds to wake after inactivity.</span>
+              {apiStatus === "unavailable" &&
+                <button className="button button--secondary" type="button" onClick={retry}>
+                  Retry connection
+                </button>}
+            </div>}
           <div className="readiness-note"><strong>Extraction & reasoning</strong>
             <span>Provider availability is checked when you run an action.</span></div>
         </article>
@@ -118,7 +124,7 @@ export function OverviewPage() {
           {["Corroborated", "Reconciled", "Contradictions", "Needs Review"].map((label, index) =>
             <Link className="relationship-metric" key={label}
               to={`/relationships?relation_type=${["CORROBORATES", "RECONCILABLE", "CONTRADICTS", "NEEDS_REVIEW"][index]}`}>
-              <span>{label}</span><strong>{breakdown[index] ?? "—"}</strong>
+              <span>{label}</span><strong>{breakdown[index] ?? (dashboardLoading ? "…" : "—")}</strong>
             </Link>)}
         </div>
         <p className="muted-copy">Counts reflect saved comparisons. A missing count means the data could not be loaded.</p>
@@ -160,14 +166,12 @@ interface StatusRowProps {
 }
 
 function StatusRow({ icon: Icon, label, status }: StatusRowProps) {
-  const text =
-    status === "checking"
-      ? "Checking…"
-      : status === "connected"
-        ? `${label === "Backend API" ? "API" : "Database"} connected`
-        : label === "Backend API"
-          ? "Backend unavailable"
-          : "Database unavailable";
+  const text = status === "connecting"
+    ? label === "Backend API" ? "Connecting…" : "Waiting for backend…"
+    : status === "waking"
+      ? label === "Backend API" ? "Waking backend…" : "Waiting for backend…"
+      : status === "connected" ? "Connected" : "Unavailable";
+  const styleStatus = status === "connecting" || status === "waking" ? "checking" : status;
 
   return (
     <div className="status-row">
@@ -175,7 +179,7 @@ function StatusRow({ icon: Icon, label, status }: StatusRowProps) {
         <Icon size={18} strokeWidth={1.8} />
         <span>{label}</span>
       </div>
-      <span className={`connection connection--${status}`}>
+      <span className={`connection connection--${styleStatus}`}>
         <i />
         {text}
       </span>

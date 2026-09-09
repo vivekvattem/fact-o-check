@@ -30,6 +30,9 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 8_000): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  const abortRequest = () => controller.abort();
+  init?.signal?.addEventListener("abort", abortRequest, { once: true });
+  if (init?.signal?.aborted) controller.abort();
 
   try {
     const response = await fetch(`${API_URL}${path}`, {
@@ -49,12 +52,13 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 8_000): 
     return (await response.json()) as T;
   } finally {
     window.clearTimeout(timeout);
+    init?.signal?.removeEventListener("abort", abortRequest);
   }
 }
 
 export const api = {
   health: () => request<HealthResponse>("/health"),
-  ready: () => request<ReadyResponse>("/ready"),
+  ready: (signal?: AbortSignal) => request<ReadyResponse>("/ready", { signal }),
   facts: {
     list: (options: Record<string, string> = {}) =>
       request<FactPage>(`/api/facts?${new URLSearchParams(options).toString()}`),
